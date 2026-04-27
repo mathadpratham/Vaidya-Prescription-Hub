@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "VaidyaOS"
+version = "1.0.0"
+id = "artifacts/vaidyaos"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18635
+
+[services.development]
+run = "pnpm --filter @workspace/vaidyaos run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/vaidyaos", "run", "build" ]
+publicDir = "artifacts/vaidyaos/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18635"
+BASE_PATH = "/"
