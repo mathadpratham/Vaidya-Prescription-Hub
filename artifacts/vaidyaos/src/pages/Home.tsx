@@ -42,7 +42,11 @@ export default function Home() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const rotateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isStoppingRef = useRef(false);
+  const pendingTranscriptionsRef = useRef(0);
 
+  const SEGMENT_MS = 25_000;
   const apiBase = `${import.meta.env.BASE_URL}api`.replace(/\/+/g, "/");
 
   const stopMediaTracks = () => {
@@ -50,9 +54,16 @@ export default function Home() {
     mediaStreamRef.current = null;
   };
 
+  const clearRotateTimer = () => {
+    if (rotateTimerRef.current) {
+      clearTimeout(rotateTimerRef.current);
+      rotateTimerRef.current = null;
+    }
+  };
+
   const sendAudioToSarvam = async (audioBlob: Blob, mimeType: string) => {
+    pendingTranscriptionsRef.current += 1;
     setIsTranscribing(true);
-    setErrorMessage("");
     try {
       const extension = mimeType.includes("mp4")
         ? "m4a"
@@ -72,10 +83,14 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        const errBody = await response.text();
-        throw new Error(
-          `Sarvam transcription failed (${response.status}): ${errBody}`,
-        );
+        let friendly = `Sarvam transcription failed (${response.status})`;
+        try {
+          const errJson = (await response.json()) as { error?: string };
+          if (errJson?.error) friendly = errJson.error;
+        } catch {
+          // ignore
+        }
+        throw new Error(friendly);
       }
 
       const data: { transcript?: string; language_code?: string } =
@@ -83,10 +98,6 @@ export default function Home() {
       const newText = (data.transcript ?? "").trim();
       if (newText) {
         setTranscript((prev) => (prev ? `${prev} ${newText}` : newText));
-      } else {
-        setErrorMessage(
-          "Kuch sunaai nahi diya — dobara try karein / कुछ सुनाई नहीं दिया",
-        );
       }
     } catch (err) {
       console.error(err);
@@ -96,8 +107,101 @@ export default function Home() {
           : "Transcription mein error aaya / त्रुटि",
       );
     } finally {
-      setIsTranscribing(false);
+      pendingTranscriptionsRef.current = Math.max(
+        0,
+        pendingTranscriptionsRef.current - 1,
+      );
+      if (pendingTranscriptionsRef.current === 0) {
+        setIsTranscribing(false);
+      }
     }
+  };
+
+  const pickMimeType = (): string => {
+    const preferred = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4",
+      "audio/ogg;codecs=opus",
+    ];
+    return (
+      preferred.find(
+        (t) =>
+          typeof MediaRecorder !== "undefined" &&
+          MediaRecorder.isTypeSupported(t),
+      ) ?? ""
+    );
+  };
+
+  const buildRecorder = (
+    stream: MediaStream,
+    onSegmentReady: (blob: Blob, mime: string) => void,
+    onFinalSegment: () => void,
+  ): MediaRecorder => {
+    const supportedType = pickMimeType();
+    const recorder = supportedType
+      ? new MediaRecorder(stream, { mimeType: supportedType })
+      : new MediaRecorder(stream);
+
+    audioChunksRef.current = [];
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        audioChunksRef.current.push(event.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      const mimeType = recorder.mimeType || "audio/webm";
+      const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
+      audioChunksRef.current = [];
+
+      if (audioBlob.size > 0) {
+        onSegmentReady(audioBlob, mimeType);
+      }
+
+      if (isStoppingRef.current) {
+        onFinalSegment();
+      }
+    };
+
+    recorder.onerror = (event) => {
+      console.error("MediaRecorder error", event);
+      setErrorMessage("Recording mein error aaya / रिकॉर्डिंग में त्रुटि");
+      isStoppingRef.current = true;
+      clearRotateTimer();
+      stopMediaTracks();
+      setIsRecording(false);
+    };
+
+    return recorder;
+  };
+
+  const scheduleRotation = () => {
+    clearRotateTimer();
+    rotateTimerRef.current = setTimeout(() => {
+      const stream = mediaStreamRef.current;
+      const current = mediaRecorderRef.current;
+      if (!stream || !current || isStoppingRef.current) return;
+
+      // Stop current recorder; its onstop will dispatch the segment
+      // Then immediately start a fresh recorder on the same stream.
+      current.stop();
+
+      const next = buildRecorder(
+        stream,
+        (blob, mime) => {
+          void sendAudioToSarvam(blob, mime);
+        },
+        () => {
+          stopMediaTracks();
+          setIsRecording(false);
+        },
+      );
+      mediaRecorderRef.current = next;
+      next.start();
+      scheduleRotation();
+    }, SEGMENT_MS);
   };
 
   const startRecording = async () => {
@@ -116,53 +220,23 @@ export default function Home() {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaStreamRef.current = stream;
+      isStoppingRef.current = false;
 
-      const preferredTypes = [
-        "audio/webm;codecs=opus",
-        "audio/webm",
-        "audio/mp4",
-        "audio/ogg;codecs=opus",
-      ];
-      const supportedType =
-        preferredTypes.find(
-          (t) =>
-            typeof MediaRecorder !== "undefined" &&
-            MediaRecorder.isTypeSupported(t),
-        ) ?? "";
-
-      const recorder = supportedType
-        ? new MediaRecorder(stream, { mimeType: supportedType })
-        : new MediaRecorder(stream);
-
-      audioChunksRef.current = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
-        }
-      };
-
-      recorder.onstop = async () => {
-        const mimeType = recorder.mimeType || "audio/webm";
-        const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
-        audioChunksRef.current = [];
-        stopMediaTracks();
-        setIsRecording(false);
-        if (audioBlob.size > 0) {
-          await sendAudioToSarvam(audioBlob, mimeType);
-        }
-      };
-
-      recorder.onerror = (event) => {
-        console.error("MediaRecorder error", event);
-        setErrorMessage("Recording mein error aaya / रिकॉर्डिंग में त्रुटि");
-        stopMediaTracks();
-        setIsRecording(false);
-      };
-
+      const recorder = buildRecorder(
+        stream,
+        (blob, mime) => {
+          void sendAudioToSarvam(blob, mime);
+        },
+        () => {
+          stopMediaTracks();
+          setIsRecording(false);
+        },
+      );
       mediaRecorderRef.current = recorder;
       recorder.start();
       setIsRecording(true);
       setShowPrescription(false);
+      scheduleRotation();
     } catch (err) {
       console.error(err);
       setErrorMessage(
@@ -173,6 +247,8 @@ export default function Home() {
   };
 
   const stopRecording = () => {
+    isStoppingRef.current = true;
+    clearRotateTimer();
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state !== "inactive") {
       recorder.stop();

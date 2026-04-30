@@ -84,8 +84,20 @@ router.post(
           { status: sarvamResponse.status, body: responseText },
           "Sarvam API returned an error",
         );
+        let friendly = "Sarvam API request failed";
+        try {
+          const errJson = JSON.parse(responseText) as {
+            error?: { message?: string; code?: string };
+          };
+          if (errJson?.error?.message) {
+            friendly = errJson.error.message;
+          }
+        } catch {
+          // keep default
+        }
         return res.status(sarvamResponse.status).json({
-          error: "Sarvam API request failed",
+          error: friendly,
+          status: sarvamResponse.status,
           details: responseText,
         });
       }
