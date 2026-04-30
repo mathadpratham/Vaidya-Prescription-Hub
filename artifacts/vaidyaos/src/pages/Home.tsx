@@ -38,6 +38,7 @@ export default function Home() {
 
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [showPrescription, setShowPrescription] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -267,11 +268,58 @@ export default function Home() {
     }
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!transcript) return;
-    const parsed = parsePrescription(transcript);
-    setMedicines(parsed);
-    setShowPrescription(true);
+    setErrorMessage("");
+    setIsParsing(true);
+    try {
+      const response = await fetch(`${apiBase}/parse-prescription`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ transcript }),
+      });
+
+      if (!response.ok) {
+        let friendly = `Prescription parsing failed (${response.status})`;
+        try {
+          const errJson = (await response.json()) as { error?: string };
+          if (errJson?.error) friendly = errJson.error;
+        } catch {
+          // ignore
+        }
+        throw new Error(friendly);
+      }
+
+      const data = (await response.json()) as { medicines?: Medicine[] };
+      const aiMedicines = Array.isArray(data.medicines) ? data.medicines : [];
+
+      if (aiMedicines.length === 0) {
+        // Fall back to regex parser if AI found nothing
+        const fallback = parsePrescription(transcript);
+        setMedicines(fallback);
+        if (fallback.length === 0) {
+          setErrorMessage(
+            "Koi dawai nahi mili transcript mein / कोई दवाई नहीं मिली",
+          );
+        }
+      } else {
+        setMedicines(aiMedicines);
+      }
+      setShowPrescription(true);
+    } catch (err) {
+      console.error(err);
+      // Fall back to regex parser on error so user is not blocked
+      const fallback = parsePrescription(transcript);
+      setMedicines(fallback);
+      setShowPrescription(true);
+      setErrorMessage(
+        err instanceof Error
+          ? `${err.message} — using basic parser fallback`
+          : "Prescription parse mein error / त्रुटि",
+      );
+    } finally {
+      setIsParsing(false);
+    }
   };
 
   const handleDownload = () => {
@@ -370,10 +418,12 @@ export default function Home() {
 
         <Button
           className="w-full py-6 text-lg rounded-xl shadow-md font-medium"
-          onClick={handleGenerate}
-          disabled={!transcript}
+          onClick={() => void handleGenerate()}
+          disabled={!transcript || isParsing}
         >
-          Prescription banayein / प्रिस्क्रिप्शन बनाएं
+          {isParsing
+            ? "Soch raha hoon... / सोच रहा हूँ..."
+            : "Prescription banayein / प्रिस्क्रिप्शन बनाएं"}
         </Button>
 
         {showPrescription && (
