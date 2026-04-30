@@ -35,6 +35,7 @@ export default function Home() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  const [detectedLanguage, setDetectedLanguage] = useState<string>("");
 
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [showPrescription, setShowPrescription] = useState(false);
@@ -97,6 +98,9 @@ export default function Home() {
       const data: { transcript?: string; language_code?: string } =
         await response.json();
       const newText = (data.transcript ?? "").trim();
+      if (data.language_code) {
+        setDetectedLanguage(data.language_code);
+      }
       if (newText) {
         setTranscript((prev) => (prev ? `${prev} ${newText}` : newText));
       }
@@ -219,9 +223,18 @@ export default function Home() {
     }
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1,
+          sampleRate: 16000,
+        },
+      });
       mediaStreamRef.current = stream;
       isStoppingRef.current = false;
+      setDetectedLanguage("");
 
       const recorder = buildRecorder(
         stream,
@@ -405,9 +418,18 @@ export default function Home() {
         />
 
         <div className="space-y-2 relative">
-          <Label className="text-muted-foreground font-medium">
-            Consultation Transcript
-          </Label>
+          <div className="flex items-center justify-between">
+            <Label className="text-muted-foreground font-medium">
+              Consultation Transcript
+            </Label>
+            {detectedLanguage && (
+              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                Heard:{" "}
+                {LANGUAGE_OPTIONS.find((o) => o.value === detectedLanguage)
+                  ?.label ?? detectedLanguage}
+              </span>
+            )}
+          </div>
           <Textarea
             className="min-h-[140px] text-base resize-none p-4 rounded-xl shadow-sm border-muted focus-visible:ring-primary/20"
             placeholder="Aapki awaaz yahan dikhegi… 'Rohit ko Paracetamol 500mg do baar khaane ke baad dena hai' / यहाँ बोला हुआ टेक्स्ट आएगा"
