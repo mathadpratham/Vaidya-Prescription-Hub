@@ -150,9 +150,13 @@ export default function Home() {
     onFinalSegment: () => void,
   ): MediaRecorder => {
     const supportedType = pickMimeType();
-    const recorder = supportedType
-      ? new MediaRecorder(stream, { mimeType: supportedType })
-      : new MediaRecorder(stream);
+    const recorderOptions: MediaRecorderOptions = {
+      audioBitsPerSecond: 128000,
+    };
+    if (supportedType) {
+      recorderOptions.mimeType = supportedType;
+    }
+    const recorder = new MediaRecorder(stream, recorderOptions);
 
     audioChunksRef.current = [];
 
