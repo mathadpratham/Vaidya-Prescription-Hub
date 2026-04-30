@@ -14,7 +14,7 @@ import {
   CardTitle,
   CardFooter,
 } from "@/components/ui/card";
-import { Download, Stethoscope, AlertCircle } from "lucide-react";
+import { Download, Stethoscope, AlertCircle, Play, Square } from "lucide-react";
 
 type LanguageCode = "unknown" | "en-IN" | "hi-IN" | "kn-IN";
 
@@ -40,10 +40,16 @@ export default function Home() {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
   const [showPrescription, setShowPrescription] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
+  const [recordedSegments, setRecordedSegments] = useState<
+    { url: string; mime: string }[]
+  >([]);
+  const [isPlayingBack, setIsPlayingBack] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
+  const playbackIndexRef = useRef(0);
   const rotateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isStoppingRef = useRef(false);
   const pendingTranscriptionsRef = useRef(0);
@@ -162,6 +168,8 @@ export default function Home() {
       audioChunksRef.current = [];
 
       if (audioBlob.size > 0) {
+        const url = URL.createObjectURL(audioBlob);
+        setRecordedSegments((prev) => [...prev, { url, mime: mimeType }]);
         onSegmentReady(audioBlob, mimeType);
       }
 
@@ -209,6 +217,49 @@ export default function Home() {
     }, SEGMENT_MS);
   };
 
+  const stopPlayback = () => {
+    const audio = playbackAudioRef.current;
+    if (audio) {
+      audio.onended = null;
+      audio.pause();
+      audio.src = "";
+    }
+    playbackAudioRef.current = null;
+    playbackIndexRef.current = 0;
+    setIsPlayingBack(false);
+  };
+
+  const playRecordedAudio = () => {
+    if (recordedSegments.length === 0) return;
+    if (isPlayingBack) {
+      stopPlayback();
+      return;
+    }
+
+    const audio = new Audio();
+    playbackAudioRef.current = audio;
+    playbackIndexRef.current = 0;
+    setIsPlayingBack(true);
+
+    const playNext = () => {
+      const idx = playbackIndexRef.current;
+      if (idx >= recordedSegments.length) {
+        stopPlayback();
+        return;
+      }
+      audio.src = recordedSegments[idx].url;
+      playbackIndexRef.current = idx + 1;
+      audio.play().catch((err) => {
+        console.error("Playback error", err);
+        stopPlayback();
+      });
+    };
+
+    audio.onended = playNext;
+    audio.onerror = () => stopPlayback();
+    playNext();
+  };
+
   const startRecording = async () => {
     setErrorMessage("");
 
@@ -235,6 +286,12 @@ export default function Home() {
       mediaStreamRef.current = stream;
       isStoppingRef.current = false;
       setDetectedLanguage("");
+      // Clear previous recording's segments
+      stopPlayback();
+      setRecordedSegments((prev) => {
+        prev.forEach((s) => URL.revokeObjectURL(s.url));
+        return [];
+      });
 
       const recorder = buildRecorder(
         stream,
@@ -418,17 +475,40 @@ export default function Home() {
         />
 
         <div className="space-y-2 relative">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between gap-2">
             <Label className="text-muted-foreground font-medium">
               Consultation Transcript
             </Label>
-            {detectedLanguage && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
-                Heard:{" "}
-                {LANGUAGE_OPTIONS.find((o) => o.value === detectedLanguage)
-                  ?.label ?? detectedLanguage}
-              </span>
-            )}
+            <div className="flex items-center gap-2">
+              {detectedLanguage && (
+                <span className="text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+                  Heard:{" "}
+                  {LANGUAGE_OPTIONS.find((o) => o.value === detectedLanguage)
+                    ?.label ?? detectedLanguage}
+                </span>
+              )}
+              {recordedSegments.length > 0 && (
+                <button
+                  type="button"
+                  onClick={playRecordedAudio}
+                  disabled={isRecording}
+                  className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-secondary text-secondary-foreground hover:bg-secondary/80 transition disabled:opacity-50"
+                  aria-label={isPlayingBack ? "Stop playback" : "Play recording"}
+                >
+                  {isPlayingBack ? (
+                    <>
+                      <Square className="w-3 h-3" />
+                      Stop
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3 h-3" />
+                      Play audio
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
           </div>
           <Textarea
             className="min-h-[140px] text-base resize-none p-4 rounded-xl shadow-sm border-muted focus-visible:ring-primary/20"
