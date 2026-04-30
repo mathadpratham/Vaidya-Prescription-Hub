@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { ArrowLeft, AlertCircle, Plus } from "lucide-react";
-import { getPatient, type Patient, type ClinicalNote } from "@/lib/api";
+import { getPatient, type Patient, type ClinicalNote, type Medication } from "@/lib/api";
 
 function formatTime(iso: string) {
   try {
@@ -152,23 +152,18 @@ export default function PatientDetail() {
                   <Vital label="Temp" value={n.temp ? `${n.temp}°` : "—"} />
                   <Vital label="SpO₂" value={n.spo2 ? `${n.spo2}%` : "—"} />
                 </div>
-                {n.transcript && (
-                  <div className="text-[14px] text-[#0F1C18] leading-relaxed whitespace-pre-wrap">
-                    {n.transcript}
-                  </div>
-                )}
-                {(n.diagnosis || n.prescription || n.followup) && (
-                  <div className="flex flex-wrap gap-1.5 mt-2.5">
-                    {n.diagnosis && (
-                      <span className="bg-teal-50 text-[#0B9E7A] text-xs font-semibold px-2.5 py-1 rounded-full">
-                        Dx: {n.diagnosis}
-                      </span>
-                    )}
-                    {n.prescription && (
-                      <span className="bg-blue-50 text-[#2563EB] text-xs font-semibold px-2.5 py-1 rounded-full">
-                        Rx: {n.prescription}
-                      </span>
-                    )}
+                <DiagnosisBlock
+                  diagnoses={n.diagnoses}
+                  fallback={n.diagnosis}
+                />
+
+                <MedicationTable
+                  medications={n.medications}
+                  fallback={n.prescription}
+                />
+
+                {(n.followup || n.admit === "Yes") && (
+                  <div className="flex flex-wrap gap-1.5 mt-3">
                     {n.followup && (
                       <span className="bg-amber-50 text-amber-700 text-xs font-semibold px-2.5 py-1 rounded-full">
                         Follow-up: {n.followup}
@@ -180,6 +175,17 @@ export default function PatientDetail() {
                       </span>
                     )}
                   </div>
+                )}
+
+                {n.transcript && (
+                  <details className="mt-3 text-[13px] text-[#4B6358]">
+                    <summary className="cursor-pointer text-[11px] uppercase tracking-wider text-[#8FA89F] font-semibold">
+                      Original transcript
+                    </summary>
+                    <div className="mt-2 leading-relaxed whitespace-pre-wrap text-[#0F1C18]">
+                      {n.transcript}
+                    </div>
+                  </details>
                 )}
               </div>
             ))}
@@ -225,6 +231,99 @@ function Vital({ label, value }: { label: string; value: string }) {
     <div className="bg-[#F7F9F8] rounded-lg p-2.5 text-center">
       <div className="text-base font-semibold text-[#0F1C18]">{value}</div>
       <div className="text-[10px] text-[#8FA89F] mt-0.5">{label}</div>
+    </div>
+  );
+}
+
+function DiagnosisBlock({
+  diagnoses,
+  fallback,
+}: {
+  diagnoses: string[];
+  fallback: string | null;
+}) {
+  const list =
+    diagnoses && diagnoses.length > 0
+      ? diagnoses
+      : fallback
+        ? fallback.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+  if (list.length === 0) return null;
+  return (
+    <div className="mb-3">
+      <div className="text-[11px] uppercase tracking-wider text-[#8FA89F] font-semibold mb-1.5">
+        Diagnosis
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {list.map((d, i) => (
+          <span
+            key={`${d}-${i}`}
+            className="bg-teal-50 text-[#0B9E7A] text-xs font-semibold px-2.5 py-1 rounded-full"
+          >
+            {d}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function MedicationTable({
+  medications,
+  fallback,
+}: {
+  medications: Medication[];
+  fallback: string | null;
+}) {
+  let rows: Medication[] = medications && medications.length > 0 ? medications : [];
+  if (rows.length === 0 && fallback && fallback.trim()) {
+    rows = fallback.split(",").map((piece) => {
+      const text = piece.trim();
+      const match = text.match(/^(.*?)\s+(\d+\s*\S*)\s*(.*)$/);
+      if (match) {
+        return {
+          name: match[1].trim(),
+          dose: match[2].trim(),
+          frequency: match[3].trim(),
+          duration: "",
+        };
+      }
+      return { name: text, dose: "", frequency: "", duration: "" };
+    }).filter((m) => m.name);
+  }
+  if (rows.length === 0) return null;
+  return (
+    <div>
+      <div className="text-[11px] uppercase tracking-wider text-[#8FA89F] font-semibold mb-1.5">
+        Prescription
+      </div>
+      <div className="border border-[#E2EAE7] rounded-xl overflow-hidden">
+        <table className="w-full text-[12px] table-fixed">
+          <thead>
+            <tr className="bg-[#F7F9F8] text-[10px] uppercase tracking-wider text-[#8FA89F]">
+              <th className="text-left px-2.5 py-1.5 font-semibold w-[36%]">Drug</th>
+              <th className="text-left px-2 py-1.5 font-semibold w-[20%]">Dose</th>
+              <th className="text-left px-2 py-1.5 font-semibold w-[24%]">Freq</th>
+              <th className="text-left px-2 py-1.5 font-semibold w-[20%]">Days</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((m, i) => (
+              <tr
+                key={`${m.name}-${i}`}
+                className={i > 0 ? "border-t border-[#E2EAE7]" : ""}
+              >
+                <td className="px-2.5 py-1.5 font-semibold text-[#0F1C18] truncate">
+                  {m.name || "—"}
+                </td>
+                <td className="px-2 py-1.5 text-[#4B6358] truncate">{m.dose || "—"}</td>
+                <td className="px-2 py-1.5 text-[#4B6358] truncate">{m.frequency || "—"}</td>
+                <td className="px-2 py-1.5 text-[#4B6358] truncate">{m.duration || "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

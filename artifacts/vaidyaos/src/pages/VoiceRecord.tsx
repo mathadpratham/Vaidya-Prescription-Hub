@@ -7,6 +7,8 @@ import {
   Square,
   Play,
   Loader2,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import {
   apiBase,
@@ -15,6 +17,7 @@ import {
   saveNote,
   type Patient,
   type ClinicalFields,
+  type Medication,
 } from "@/lib/api";
 
 type LanguageCode = "unknown" | "en-IN" | "hi-IN" | "kn-IN";
@@ -31,9 +34,18 @@ const EMPTY_FIELDS: ClinicalFields = {
   temp: "",
   spo2: "",
   diagnosis: "",
+  diagnoses: [],
   prescription: "",
+  medications: [],
   followup: "",
   admit: "No",
+};
+
+const EMPTY_MED: Medication = {
+  name: "",
+  dose: "",
+  frequency: "",
+  duration: "",
 };
 
 export default function VoiceRecord() {
@@ -375,13 +387,29 @@ export default function VoiceRecord() {
     setErrorMessage("");
     setIsSaving(true);
     try {
+      const cleanedMeds = fields.medications.filter((m) => m.name.trim());
+      const cleanedDx =
+        fields.diagnoses && fields.diagnoses.length > 0
+          ? fields.diagnoses.map((d) => d.trim()).filter(Boolean)
+          : fields.diagnosis
+            ? fields.diagnosis.split(",").map((s) => s.trim()).filter(Boolean)
+            : [];
       await saveNote(id, {
         transcript,
         bp: fields.bp,
         temp: fields.temp,
         spo2: fields.spo2,
-        diagnosis: fields.diagnosis,
-        prescription: fields.prescription,
+        diagnosis: fields.diagnosis || cleanedDx.join(", "),
+        diagnoses: cleanedDx,
+        prescription:
+          fields.prescription ||
+          cleanedMeds
+            .map(
+              (m) =>
+                `${m.name}${m.dose ? ` ${m.dose}` : ""}${m.frequency ? ` ${m.frequency}` : ""}${m.duration ? ` x ${m.duration}` : ""}`,
+            )
+            .join(", "),
+        medications: cleanedMeds,
         followup: fields.followup,
         admit: fields.admit,
       });
@@ -561,17 +589,129 @@ export default function VoiceRecord() {
             )}
           </button>
 
-          <div className="grid grid-cols-2 gap-2.5">
-            <FieldCard
-              label="Diagnosis"
+          <div className="bg-white border border-[#E2EAE7] rounded-xl p-3">
+            <div className="text-[11px] text-[#8FA89F] mb-1.5 font-medium">
+              Diagnosis
+            </div>
+            <input
+              type="text"
               value={fields.diagnosis}
-              onChange={(v) => setFields({ ...fields, diagnosis: v })}
+              onChange={(e) =>
+                setFields({ ...fields, diagnosis: e.target.value })
+              }
+              placeholder="e.g. Viral fever, Throat infection"
+              className="w-full text-sm font-semibold text-[#0F1C18] focus:outline-none placeholder:text-[#8FA89F]"
+              data-testid="field-diagnosis"
             />
-            <FieldCard
-              label="Prescription"
-              value={fields.prescription}
-              onChange={(v) => setFields({ ...fields, prescription: v })}
-            />
+          </div>
+
+          <div className="bg-white border border-[#E2EAE7] rounded-xl p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[11px] text-[#8FA89F] font-medium uppercase tracking-wider">
+                Prescription
+              </div>
+              <button
+                type="button"
+                onClick={() =>
+                  setFields({
+                    ...fields,
+                    medications: [...fields.medications, { ...EMPTY_MED }],
+                  })
+                }
+                className="text-[11px] font-semibold text-[#0B9E7A] flex items-center gap-1 active:opacity-70"
+                data-testid="button-add-medication"
+              >
+                <Plus className="w-3 h-3" /> Add row
+              </button>
+            </div>
+
+            {fields.medications.length === 0 ? (
+              <div className="text-[12px] text-[#8FA89F] py-2">
+                No medicines extracted. Tap "Add row" or run auto-extract.
+              </div>
+            ) : (
+              <div className="border border-[#E2EAE7] rounded-lg overflow-hidden">
+                <div className="grid grid-cols-[1.6fr_1fr_1.1fr_0.9fr_24px] bg-[#F7F9F8] text-[10px] uppercase tracking-wider text-[#8FA89F] font-semibold">
+                  <div className="px-2 py-1.5">Drug</div>
+                  <div className="px-1.5 py-1.5">Dose</div>
+                  <div className="px-1.5 py-1.5">Freq</div>
+                  <div className="px-1.5 py-1.5">Days</div>
+                  <div />
+                </div>
+                {fields.medications.map((m, i) => (
+                  <div
+                    key={i}
+                    className={`grid grid-cols-[1.6fr_1fr_1.1fr_0.9fr_24px] items-center text-[12px] ${i > 0 ? "border-t border-[#E2EAE7]" : ""}`}
+                  >
+                    <input
+                      type="text"
+                      value={m.name}
+                      onChange={(e) => {
+                        const next = [...fields.medications];
+                        next[i] = { ...next[i], name: e.target.value };
+                        setFields({ ...fields, medications: next });
+                      }}
+                      placeholder="Drug"
+                      className="px-2 py-1.5 font-semibold text-[#0F1C18] focus:outline-none placeholder:text-[#8FA89F] min-w-0"
+                      data-testid={`med-name-${i}`}
+                    />
+                    <input
+                      type="text"
+                      value={m.dose}
+                      onChange={(e) => {
+                        const next = [...fields.medications];
+                        next[i] = { ...next[i], dose: e.target.value };
+                        setFields({ ...fields, medications: next });
+                      }}
+                      placeholder="500mg"
+                      className="px-1.5 py-1.5 text-[#4B6358] focus:outline-none placeholder:text-[#8FA89F] min-w-0"
+                      data-testid={`med-dose-${i}`}
+                    />
+                    <input
+                      type="text"
+                      value={m.frequency}
+                      onChange={(e) => {
+                        const next = [...fields.medications];
+                        next[i] = { ...next[i], frequency: e.target.value };
+                        setFields({ ...fields, medications: next });
+                      }}
+                      placeholder="1-0-1"
+                      className="px-1.5 py-1.5 text-[#4B6358] focus:outline-none placeholder:text-[#8FA89F] min-w-0"
+                      data-testid={`med-freq-${i}`}
+                    />
+                    <input
+                      type="text"
+                      value={m.duration}
+                      onChange={(e) => {
+                        const next = [...fields.medications];
+                        next[i] = { ...next[i], duration: e.target.value };
+                        setFields({ ...fields, medications: next });
+                      }}
+                      placeholder="5d"
+                      className="px-1.5 py-1.5 text-[#4B6358] focus:outline-none placeholder:text-[#8FA89F] min-w-0"
+                      data-testid={`med-dur-${i}`}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = fields.medications.filter(
+                          (_, idx) => idx !== i,
+                        );
+                        setFields({ ...fields, medications: next });
+                      }}
+                      className="text-[#8FA89F] active:text-red-500 p-1"
+                      aria-label="Remove medication"
+                      data-testid={`med-remove-${i}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5">
             <FieldCard
               label="Follow-up"
               value={fields.followup}

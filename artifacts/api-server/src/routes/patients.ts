@@ -17,6 +17,13 @@ const newPatientSchema = z.object({
   tag: z.enum(["new", "follow", "critical"]).optional(),
 });
 
+const medicationSchema = z.object({
+  name: z.string().trim().min(1),
+  dose: z.string().trim().default(""),
+  frequency: z.string().trim().default(""),
+  duration: z.string().trim().default(""),
+});
+
 const newNoteSchema = z.object({
   doctorName: z.string().trim().optional(),
   transcript: z.string().optional(),
@@ -24,7 +31,9 @@ const newNoteSchema = z.object({
   temp: z.string().optional(),
   spo2: z.string().optional(),
   diagnosis: z.string().optional(),
+  diagnoses: z.array(z.string().trim().min(1)).optional(),
   prescription: z.string().optional(),
+  medications: z.array(medicationSchema).optional(),
   followup: z.string().optional(),
   admit: z.string().optional(),
 });
@@ -128,7 +137,9 @@ router.post("/patients/:id/notes", async (req, res) => {
         temp: parsed.data.temp,
         spo2: parsed.data.spo2,
         diagnosis: parsed.data.diagnosis,
+        diagnoses: parsed.data.diagnoses ?? [],
         prescription: parsed.data.prescription,
+        medications: parsed.data.medications ?? [],
         followup: parsed.data.followup,
         admit: parsed.data.admit,
       })

@@ -4,9 +4,17 @@ import {
   integer,
   serial,
   timestamp,
+  jsonb,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+export type Medication = {
+  name: string;
+  dose: string;
+  frequency: string;
+  duration: string;
+};
 
 export const patientsTable = pgTable("patients", {
   id: text("id").primaryKey(),
@@ -35,6 +43,8 @@ export const clinicalNotesTable = pgTable("clinical_notes", {
   spo2: text("spo2"),
   diagnosis: text("diagnosis"),
   prescription: text("prescription"),
+  diagnoses: jsonb("diagnoses").$type<string[]>().default([]).notNull(),
+  medications: jsonb("medications").$type<Medication[]>().default([]).notNull(),
   followup: text("followup"),
   admit: text("admit"),
   createdAt: timestamp("created_at", { withTimezone: true })

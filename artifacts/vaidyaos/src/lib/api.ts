@@ -13,6 +13,13 @@ export type Patient = {
   createdAt: string;
 };
 
+export type Medication = {
+  name: string;
+  dose: string;
+  frequency: string;
+  duration: string;
+};
+
 export type ClinicalNote = {
   id: number;
   patientId: string;
@@ -22,7 +29,9 @@ export type ClinicalNote = {
   temp: string | null;
   spo2: string | null;
   diagnosis: string | null;
+  diagnoses: string[];
   prescription: string | null;
+  medications: Medication[];
   followup: string | null;
   admit: string | null;
   createdAt: string;
@@ -33,7 +42,9 @@ export type ClinicalFields = {
   temp: string;
   spo2: string;
   diagnosis: string;
+  diagnoses: string[];
   prescription: string;
+  medications: Medication[];
   followup: string;
   admit: string;
 };

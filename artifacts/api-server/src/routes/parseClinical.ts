@@ -23,7 +23,14 @@ Extract the following structured fields from the transcript. If a field is not m
 - temp: temperature in Fahrenheit as a number string e.g. "102.4". Convert from Celsius if needed (C * 9/5 + 32). Empty if not mentioned.
 - spo2: SpO2 percentage as a number string e.g. "98". Empty if not mentioned.
 - diagnosis: short diagnosis or impression, e.g. "Viral fever", "Suspected NSTEMI". Empty if not mentioned.
-- prescription: short summary of medicines prescribed (drug + dose + frequency comma-separated), e.g. "Paracetamol 500mg TDS, Cetirizine 10mg HS". Empty if no medicines.
+- diagnoses: array of distinct diagnoses, each a short string. Empty array if none.
+- prescription: short summary of medicines prescribed (drug + dose + frequency comma-separated), e.g. "Paracetamol 500mg TDS, Cetirizine 10mg HS". Empty if no medicines. (Kept for backward compatibility — also fill medications below.)
+- medications: array of medicines. For each medicine return:
+    - name: drug name (e.g. "Paracetamol", "Amoxicillin")
+    - dose: strength + unit (e.g. "500mg", "10ml", "5mg/kg")
+    - frequency: dosing schedule, expanded plainly (e.g. "1-0-1" for morning-noon-night, "TDS" → "1-1-1", "BD" → "1-0-1", "OD" → "1-0-0", "HS" → "0-0-1", "SOS" → "as needed"). Use "1-0-1" style when possible.
+    - duration: how many days/weeks (e.g. "5 days", "2 weeks", "ongoing"). Empty string if not mentioned.
+  Empty array if no medicines.
 - followup: follow-up duration or instruction, e.g. "3 days", "2 weeks", "as needed". Empty if not mentioned.
 - admit: "Yes" if admission is recommended, otherwise "No".
 
@@ -62,7 +69,25 @@ router.post("/parse-clinical", async (req: Request, res: Response) => {
             temp: { type: Type.STRING },
             spo2: { type: Type.STRING },
             diagnosis: { type: Type.STRING },
+            diagnoses: {
+              type: Type.ARRAY,
+              items: { type: Type.STRING },
+            },
             prescription: { type: Type.STRING },
+            medications: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  name: { type: Type.STRING },
+                  dose: { type: Type.STRING },
+                  frequency: { type: Type.STRING },
+                  duration: { type: Type.STRING },
+                },
+                required: ["name", "dose", "frequency", "duration"],
+                propertyOrdering: ["name", "dose", "frequency", "duration"],
+              },
+            },
             followup: { type: Type.STRING },
             admit: { type: Type.STRING },
           },
@@ -71,7 +96,9 @@ router.post("/parse-clinical", async (req: Request, res: Response) => {
             "temp",
             "spo2",
             "diagnosis",
+            "diagnoses",
             "prescription",
+            "medications",
             "followup",
             "admit",
           ],
@@ -80,7 +107,9 @@ router.post("/parse-clinical", async (req: Request, res: Response) => {
             "temp",
             "spo2",
             "diagnosis",
+            "diagnoses",
             "prescription",
+            "medications",
             "followup",
             "admit",
           ],
@@ -105,13 +134,40 @@ router.post("/parse-clinical", async (req: Request, res: Response) => {
     const safe = (k: string) =>
       typeof parsed[k] === "string" ? (parsed[k] as string) : "";
 
+    const diagnosesRaw = parsed.diagnoses;
+    const diagnoses: string[] = Array.isArray(diagnosesRaw)
+      ? diagnosesRaw
+          .filter((v): v is string => typeof v === "string")
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : [];
+
+    const medicationsRaw = parsed.medications;
+    const medications = Array.isArray(medicationsRaw)
+      ? medicationsRaw
+          .map((m) => {
+            const obj = (m ?? {}) as Record<string, unknown>;
+            const str = (k: string) =>
+              typeof obj[k] === "string" ? (obj[k] as string) : "";
+            return {
+              name: str("name").trim(),
+              dose: str("dose").trim(),
+              frequency: str("frequency").trim(),
+              duration: str("duration").trim(),
+            };
+          })
+          .filter((m) => m.name)
+      : [];
+
     return res.json({
       fields: {
         bp: safe("bp"),
         temp: safe("temp"),
         spo2: safe("spo2"),
         diagnosis: safe("diagnosis"),
+        diagnoses,
         prescription: safe("prescription"),
+        medications,
         followup: safe("followup"),
         admit: safe("admit") || "No",
       },
