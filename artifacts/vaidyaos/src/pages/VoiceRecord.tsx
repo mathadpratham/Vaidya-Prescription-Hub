@@ -9,6 +9,8 @@ import {
   Loader2,
   Plus,
   Trash2,
+  Camera,
+  X,
 } from "lucide-react";
 import {
   apiBase,
@@ -18,7 +20,27 @@ import {
   type Patient,
   type ClinicalFields,
   type Medication,
+  type ClinicalPhoto,
 } from "@/lib/api";
+
+async function compressImage(file: File): Promise<{ data: string; mimeType: string }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1200;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+      resolve({ data: dataUrl.split(",")[1], mimeType: "image/jpeg" });
+    };
+    img.src = url;
+  });
+}
 
 type LanguageCode = "unknown" | "en-IN" | "hi-IN" | "kn-IN";
 
@@ -75,11 +97,15 @@ export default function VoiceRecord() {
   >([]);
   const [isPlayingBack, setIsPlayingBack] = useState(false);
 
+  const [photos, setPhotos] = useState<ClinicalPhoto[]>([]);
+  const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
   const playbackIndexRef = useRef(0);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const rotateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isStoppingRef = useRef(false);
@@ -366,15 +392,26 @@ export default function VoiceRecord() {
     else void startRecording();
   };
 
+  const handlePhotoAdd = async (files: FileList | null) => {
+    if (!files) return;
+    for (const file of Array.from(files)) {
+      const compressed = await compressImage(file);
+      setPhotos((prev) => [...prev, { ...compressed, type: "prescription" }]);
+    }
+  };
+
+  const hasRxPhoto = photos.some((p) => p.type === "prescription");
+  const canExtract = transcript.trim().length > 0 || hasRxPhoto;
+
   const handleAutoExtract = async () => {
-    if (!transcript.trim()) {
-      setErrorMessage("Record or type a transcript first");
+    if (!canExtract) {
+      setErrorMessage("Record something or add a prescription photo first");
       return;
     }
     setErrorMessage("");
     setIsParsing(true);
     try {
-      const f = await parseClinical(transcript);
+      const f = await parseClinical(transcript, photos.length ? photos : undefined);
       setFields(f);
     } catch (err) {
       setErrorMessage(
@@ -415,6 +452,7 @@ export default function VoiceRecord() {
         medications: cleanedMeds,
         followup: fields.followup,
         admit: fields.admit,
+        photos,
       });
       setSavedOk(true);
       setTimeout(() => navigate(`/patients/${id}`), 700);
@@ -536,34 +574,98 @@ export default function VoiceRecord() {
           <div className="font-mono text-2xl text-[#0F1C18] font-medium">
             {minutes}:{seconds.toString().padStart(2, "0")}
           </div>
-          <div className="relative">
-            {isRecording && (
-              <>
-                <span className="absolute inset-0 -m-1 rounded-full border-2 border-red-500 animate-ping" />
-                <span
-                  className="absolute inset-0 -m-1 rounded-full border-2 border-red-500 animate-ping"
-                  style={{ animationDelay: "0.5s" }}
-                />
-              </>
-            )}
+          <div className="flex items-center gap-5">
+            {/* Camera button */}
             <button
               type="button"
-              onClick={toggleRecord}
-              className={`relative w-[72px] h-[72px] rounded-full flex items-center justify-center text-white shadow-lg transition active:scale-95 ${
-                isRecording
-                  ? "bg-red-500 shadow-red-500/40"
-                  : "bg-[#0B9E7A] shadow-teal-500/40"
-              }`}
-              aria-label={isRecording ? "Stop recording" : "Start recording"}
-              data-testid="button-record"
+              onClick={() => cameraInputRef.current?.click()}
+              className="w-12 h-12 rounded-full border-2 border-[#E2EAE7] bg-white flex items-center justify-center text-[#4B6358] active:bg-[#F7F9F8] transition"
+              aria-label="Add prescription photo"
             >
-              {isRecording ? (
-                <Square className="w-7 h-7" fill="currentColor" />
-              ) : (
-                <Mic className="w-7 h-7" />
-              )}
+              <Camera className="w-5 h-5" />
             </button>
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              multiple
+              className="hidden"
+              onChange={(e) => void handlePhotoAdd(e.target.files)}
+            />
+
+            {/* Mic button */}
+            <div className="relative">
+              {isRecording && (
+                <>
+                  <span className="absolute inset-0 -m-1 rounded-full border-2 border-red-500 animate-ping" />
+                  <span
+                    className="absolute inset-0 -m-1 rounded-full border-2 border-red-500 animate-ping"
+                    style={{ animationDelay: "0.5s" }}
+                  />
+                </>
+              )}
+              <button
+                type="button"
+                onClick={toggleRecord}
+                className={`relative w-[72px] h-[72px] rounded-full flex items-center justify-center text-white shadow-lg transition active:scale-95 ${
+                  isRecording
+                    ? "bg-red-500 shadow-red-500/40"
+                    : "bg-[#0B9E7A] shadow-teal-500/40"
+                }`}
+                aria-label={isRecording ? "Stop recording" : "Start recording"}
+                data-testid="button-record"
+              >
+                {isRecording ? (
+                  <Square className="w-7 h-7" fill="currentColor" />
+                ) : (
+                  <Mic className="w-7 h-7" />
+                )}
+              </button>
+            </div>
+
+            {/* Spacer to balance camera button */}
+            <div className="w-12 h-12" />
           </div>
+
+          {/* Photo strip */}
+          {photos.length > 0 && (
+            <div className="flex gap-2 flex-wrap justify-center mt-1 px-4">
+              {photos.map((ph, i) => (
+                <div key={i} className="relative group">
+                  <img
+                    src={`data:${ph.mimeType};base64,${ph.data}`}
+                    className={`w-14 h-14 rounded-xl object-cover cursor-pointer border-2 ${
+                      ph.type === "prescription" ? "border-[#0B9E7A]" : "border-purple-400"
+                    }`}
+                    onClick={() => setExpandedPhoto(`data:${ph.mimeType};base64,${ph.data}`)}
+                    alt={`photo-${i}`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPhotos((prev) => prev.filter((_, j) => j !== i))}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-red-500 text-white flex items-center justify-center text-[10px] font-bold opacity-0 group-hover:opacity-100 active:opacity-100 transition"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setPhotos((prev) =>
+                        prev.map((p, j) =>
+                          j === i ? { ...p, type: p.type === "prescription" ? "clinical" : "prescription" } : p
+                        )
+                      )
+                    }
+                    className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[9px] font-bold whitespace-nowrap px-1.5 py-0.5 rounded-full bg-white border border-[#E2EAE7] text-[#4B6358] active:bg-[#F7F9F8]"
+                  >
+                    {ph.type === "prescription" ? "Rx scan" : "Clinical 📷"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
           <div className="text-xs text-[#4B6358] font-medium">
             {isTranscribing
               ? "Transcribing…"
@@ -571,7 +673,7 @@ export default function VoiceRecord() {
                 ? "Recording… speak your clinical notes"
                 : transcript
                   ? "Recording stopped. Review and save."
-                  : "Tap microphone to start recording"}
+                  : "Tap mic to record or camera to add prescription photo"}
           </div>
         </div>
 
@@ -579,17 +681,17 @@ export default function VoiceRecord() {
           <button
             type="button"
             onClick={() => void handleAutoExtract()}
-            disabled={!transcript.trim() || isParsing}
+            disabled={!canExtract || isParsing}
             className="w-full bg-white border border-[#0B9E7A] text-[#0B9E7A] rounded-xl py-3 text-sm font-semibold active:bg-teal-50 disabled:border-[#E2EAE7] disabled:text-[#8FA89F] transition flex items-center justify-center gap-2"
             data-testid="button-extract"
           >
-            {isParsing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" /> Extracting…
-              </>
-            ) : (
-              "✨ Auto-extract vitals & diagnosis"
-            )}
+            {isParsing
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> {hasRxPhoto && transcript.trim() ? "Making final prescription…" : hasRxPhoto ? "Reading prescription photo…" : "Extracting…"}</>
+              : hasRxPhoto && transcript.trim()
+                ? "✨ Make final prescription (voice + photo)"
+                : hasRxPhoto
+                  ? "✨ Read prescription photo"
+                  : "✨ Extract patient info & clinical fields"}
           </button>
 
           <div className="bg-white border border-[#E2EAE7] rounded-xl p-3">
@@ -730,7 +832,7 @@ export default function VoiceRecord() {
           <button
             type="button"
             onClick={() => void handleSave()}
-            disabled={isSaving || !transcript.trim()}
+            disabled={isSaving || (!transcript.trim() && photos.length === 0)}
             className={`w-full rounded-2xl py-4 text-base font-semibold transition flex items-center justify-center gap-2 ${
               savedOk
                 ? "bg-emerald-600 text-white"
@@ -746,6 +848,20 @@ export default function VoiceRecord() {
           </button>
         </div>
       </div>
+
+      {/* Photo lightbox */}
+      {expandedPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setExpandedPhoto(null)}>
+          <img src={expandedPhoto} className="max-w-full max-h-full rounded-xl object-contain" alt="Full photo" />
+          <button type="button"
+            onClick={() => setExpandedPhoto(null)}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 text-white flex items-center justify-center text-lg font-bold">
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

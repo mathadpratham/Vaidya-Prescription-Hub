@@ -129,7 +129,7 @@ export async function getPatient(id: string): Promise<{
 
 export async function saveNote(
   patientId: string,
-  note: Partial<ClinicalFields> & { transcript?: string; doctorName?: string },
+  note: Partial<ClinicalFields> & { transcript?: string; doctorName?: string; photos?: ClinicalPhoto[] },
 ): Promise<ClinicalNote> {
   const res = await fetch(
     `${apiBase}/patients/${encodeURIComponent(patientId)}/notes`,
