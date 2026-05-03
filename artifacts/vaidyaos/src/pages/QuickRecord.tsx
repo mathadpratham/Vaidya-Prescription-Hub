@@ -9,7 +9,7 @@ import {
   type ClinicalFields, type Medication,
 } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
-import { buildReminderUrls, type ReminderSlot } from "@/lib/whatsapp";
+import { buildCombinedReminderUrl } from "@/lib/whatsapp";
 
 type LanguageCode = "unknown" | "en-IN" | "hi-IN" | "kn-IN";
 
@@ -51,9 +51,6 @@ export default function QuickRecord() {
   const [isPlayingBack, setIsPlayingBack] = useState(false);
 
   const [sendReminders, setSendReminders] = useState(false);
-  const [reminderSlots, setReminderSlots] = useState<ReminderSlot[]>([]);
-  const [sentSlots, setSentSlots]         = useState<Set<number>>(new Set());
-  const [savedPatientId, setSavedPatientId] = useState("");
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef   = useRef<Blob[]>([]);
@@ -153,8 +150,6 @@ export default function QuickRecord() {
     setErrorMsg("");
     setSavedOk(false);
     setExtracted(false);
-    setReminderSlots([]);
-    setSentSlots(new Set());
     if (!navigator.mediaDevices?.getUserMedia) { setErrorMsg("Browser does not support microphone"); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 16000 } });
@@ -245,13 +240,11 @@ export default function QuickRecord() {
         patientAge: fields.patientAge ? Number(fields.patientAge) : undefined,
       } as Parameters<typeof saveNote>[1]);
       setSavedOk(true);
-      setSavedPatientId(patient.id);
       if (sendReminders && cleanedMeds.length > 0) {
-        const slots = buildReminderUrls(phone, fields.patientName, doctor?.name ?? "Doctor", cleanedMeds, fields.followup);
-        setReminderSlots(slots);
-      } else {
-        setTimeout(() => navigate(`/patients/${patient.id}`), 800);
+        const waUrl = buildCombinedReminderUrl(phone, fields.patientName, doctor?.name ?? "Doctor", cleanedMeds, fields.followup);
+        if (waUrl) window.open(waUrl, "_blank", "noopener,noreferrer");
       }
+      setTimeout(() => navigate(`/patients/${patient.id}`), 900);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Failed to save");
     } finally {
@@ -262,7 +255,6 @@ export default function QuickRecord() {
   const phoneOk = fields.patientPhone.replace(/\D/g, "").length === 10;
   const hasMeds  = fields.medications.some((m) => m.name.trim());
   const showReminderToggle = extracted && phoneOk && hasMeds;
-  const showReminderPanel  = savedOk && reminderSlots.length > 0;
 
   const min = Math.floor(recordSeconds / 60);
   const sec = recordSeconds % 60;
@@ -485,45 +477,16 @@ export default function QuickRecord() {
           )}
 
           {/* Save button */}
-          {extracted && !showReminderPanel && (
+          {extracted && (
             <button type="button" onClick={() => void handleSave()}
               disabled={isSaving || !transcript.trim()}
               className={`w-full rounded-2xl py-4 text-base font-semibold transition flex items-center justify-center gap-2 ${savedOk ? "bg-emerald-600 text-white" : "bg-[#0B9E7A] text-white active:bg-[#077A5E] disabled:bg-[#E2EAE7] disabled:text-[#8FA89F]"}`}
               data-testid="button-save-emr">
-              {savedOk ? "✓ Saved to EMR!" : isSaving ? "Saving…" : "Save to EMR"}
+              {savedOk
+                ? (sendReminders ? "✓ Saved! Opening WhatsApp…" : "✓ Saved to EMR!")
+                : isSaving ? "Saving…"
+                : "Save to EMR"}
             </button>
-          )}
-
-          {/* WhatsApp reminder panel (shown after save) */}
-          {showReminderPanel && (
-            <div className="bg-white border-2 border-[#25D366] rounded-2xl p-4">
-              <div className="flex items-center gap-2 mb-1">
-                <WhatsAppIcon className="w-5 h-5 text-[#25D366]" />
-                <div className="text-sm font-semibold text-[#0F1C18]">Send Medicine Reminders</div>
-              </div>
-              <div className="text-[12px] text-[#8FA89F] mb-3">
-                Tap each button to open WhatsApp and send to {fields.patientName || "patient"} (+91 {fields.patientPhone})
-              </div>
-              <div className="space-y-2">
-                {reminderSlots.map((slot, i) => {
-                  const sent = sentSlots.has(i);
-                  return (
-                    <a key={i} href={slot.url} target="_blank" rel="noopener noreferrer"
-                      onClick={() => setSentSlots((p) => new Set([...p, i]))}
-                      className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition ${sent ? "bg-[#25D366]/10 text-[#1a7a42]" : "bg-[#25D366] text-white"}`}>
-                      <span className="text-lg leading-none">{slot.emoji}</span>
-                      <span className="flex-1">{slot.label} reminder</span>
-                      {sent && <span className="text-[11px] opacity-70">Sent ✓</span>}
-                    </a>
-                  );
-                })}
-              </div>
-              <button type="button"
-                onClick={() => navigate(`/patients/${savedPatientId}`)}
-                className="w-full mt-3 bg-[#0B9E7A] text-white rounded-xl py-3 text-sm font-semibold active:bg-[#077A5E] transition">
-                Done — View Patient
-              </button>
-            </div>
           )}
         </div>
       </div>

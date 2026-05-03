@@ -109,6 +109,49 @@ const SLOT_META: Record<"morning" | "afternoon" | "night", { label: string; emoj
   night:     { label: "Night",     emoji: "🌙", greeting: "Good night" },
 };
 
+export function buildCombinedReminderUrl(
+  phone: string,
+  patientName: string,
+  doctorName: string,
+  medications: Medication[],
+  followup: string,
+): string | null {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length !== 10) return null;
+
+  const bySlot: Record<"morning" | "afternoon" | "night", Medication[]> = {
+    morning: [], afternoon: [], night: [],
+  };
+
+  for (const med of medications) {
+    if (!med.name.trim()) continue;
+    const timings = parseTimings(med.frequency);
+    for (const t of timings) bySlot[t].push(med);
+  }
+
+  const slots = (["morning", "afternoon", "night"] as const).filter((s) => bySlot[s].length > 0);
+  if (slots.length === 0) return null;
+
+  let text = `💊 *Medicine Reminder* from *Dr. ${doctorName}*\n`;
+  text += `Hello *${patientName || "Patient"}*, please take your medicines as below:\n\n`;
+
+  for (const slot of slots) {
+    const meta = SLOT_META[slot];
+    text += `${meta.emoji} *${meta.label}*\n`;
+    for (const m of bySlot[slot]) {
+      const parts = [m.name];
+      if (m.dose) parts.push(m.dose);
+      text += `• ${parts.join(" ")}\n`;
+    }
+    text += "\n";
+  }
+
+  if (followup) text += `📅 *Follow-up:* ${followup}\n\n`;
+  text += `_Sent via VaidyaOS_`;
+
+  return waUrl(digits, text);
+}
+
 export function buildReminderUrls(
   phone: string,
   patientName: string,
