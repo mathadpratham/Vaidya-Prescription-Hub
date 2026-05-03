@@ -478,9 +478,9 @@ export default function QuickRecord() {
             disabled={!canExtract}
             className="w-full bg-white border border-[#0B9E7A] text-[#0B9E7A] rounded-xl py-3 text-sm font-semibold active:bg-teal-50 disabled:border-[#E2EAE7] disabled:text-[#8FA89F] transition flex items-center justify-center gap-2">
             {isParsing
-              ? <><Loader2 className="w-4 h-4 animate-spin" /> {hasRxPhoto && transcript.trim() ? "Tallying voice + photo…" : hasRxPhoto ? "Reading prescription…" : "Extracting…"}</>
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> {hasRxPhoto && transcript.trim() ? "Making final prescription…" : hasRxPhoto ? "Reading prescription photo…" : "Extracting…"}</>
               : hasRxPhoto && transcript.trim()
-                ? "✨ Tally voice + Rx photo"
+                ? "✨ Make final prescription (voice + photo)"
                 : hasRxPhoto
                   ? "✨ Read prescription photo"
                   : "✨ Extract patient info & clinical fields"}

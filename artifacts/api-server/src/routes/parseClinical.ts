@@ -43,20 +43,41 @@ Output ONLY valid JSON matching the provided schema.`;
   if (hasTranscript && hasPrescriptionPhoto) {
     return `${base}
 
-IMPORTANT: You have BOTH a voice transcript AND a handwritten prescription image.
-- Extract patient details (name, phone, age) and vitals (BP, temp, SpO2) from the TRANSCRIPT.
-- Extract the medication list from the HANDWRITTEN PRESCRIPTION IMAGE — the photo is the authoritative source for drugs, doses and frequencies.
-- If the transcript also mentions medicines, cross-check and reconcile with the photo. Prefer the photo for drug names and doses.`;
+TASK: Produce one final, complete digital prescription by tallying ALL information from BOTH the voice transcript AND the handwritten prescription image. Follow these rules strictly:
+
+PATIENT DETAILS (name, phone, age):
+- Phone number: take from the voice transcript (patients usually tell it verbally).
+- Patient name: the doctor may NOT say the name aloud but may write it on the prescription — check BOTH sources and use whichever has it. If both have a name, prefer the written one (more precise spelling).
+- Age: same — check both and use the clearest value.
+
+VITALS (BP, Temp, SpO2): primarily from the voice transcript.
+
+DIAGNOSES:
+- Combine diagnoses from BOTH sources. Include any diagnosis written on the prescription even if not spoken.
+
+MEDICATIONS — this is the most critical part:
+- Do a FULL UNION of all drugs from BOTH sources. Never drop a medicine.
+- If a drug appears ONLY in the prescription image: include it with the dose/frequency from the image.
+- If a drug appears ONLY in the transcript: include it with the dose/frequency from the transcript.
+- If a drug appears in BOTH: merge into one entry — use the written prescription for the exact drug name spelling, dose, and frequency (written is more precise); use the transcript for any extra context (like duration if not written).
+- Watch for the same drug written differently (e.g. "Paracetamol" vs "PCM" vs "Crocin") — deduplicate intelligently.
+
+FOLLOW-UP: take from either source; prefer the more specific instruction.
+
+Output one final, unified, complete digital prescription JSON.`;
   }
   if (!hasTranscript && hasPrescriptionPhoto) {
     return `${base}
 
-You are reading a HANDWRITTEN PRESCRIPTION IMAGE. Extract all fields visible in the prescription photo.
-Patient details like name, age, phone may or may not be written — extract what is visible.`;
+You are reading a HANDWRITTEN PRESCRIPTION IMAGE (no voice transcript available).
+Extract ALL fields visible in the prescription — patient name, age, phone if written, diagnoses, every medicine with its dose and frequency, and follow-up instructions.
+Indian handwritten prescriptions often use abbreviations: BD=twice daily (1-0-1), TDS=thrice (1-1-1), OD=once daily (1-0-0), HS=night only (0-0-1), SOS=as needed.
+Transcribe drug names exactly as written. If a field is not visible, leave it empty.`;
   }
   return `${base}
 
-You will receive a free-form clinical consultation transcript that may be in Hindi, Kannada, English, or a mix (Hinglish, Devanagari, Roman script). Extract all fields from it.`;
+You will receive a free-form clinical consultation transcript that may be in Hindi, Kannada, English, or a mix (Hinglish, Devanagari, Roman script).
+Extract all fields. The doctor speaks to the patient and may mention name, phone, age, complaints, diagnosis, and medicines during the consultation.`;
 }
 
 router.post("/parse-clinical", async (req: Request, res: Response) => {
