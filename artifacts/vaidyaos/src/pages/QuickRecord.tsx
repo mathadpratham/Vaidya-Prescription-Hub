@@ -5,11 +5,18 @@ import {
   Loader2, Plus, Trash2, CheckCircle2,
 } from "lucide-react";
 import {
-  apiBase, lookupPatient, saveNote, parseClinical,
-  type ClinicalFields, type Medication,
+  apiBase, lookupPatient, getPatient, saveNote, parseClinical,
+  type ClinicalFields, type Medication, type Patient, type ClinicalNote,
 } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
 import { buildCombinedReminderUrl } from "@/lib/whatsapp";
+
+type PatientHistory = {
+  patient: Patient;
+  isNew: boolean;
+  lastNote: ClinicalNote | null;
+  totalNotes: number;
+};
 
 type LanguageCode = "unknown" | "en-IN" | "hi-IN" | "kn-IN";
 
@@ -50,7 +57,9 @@ export default function QuickRecord() {
   const [recordedSegments, setRecordedSegments] = useState<{ url: string; mime: string }[]>([]);
   const [isPlayingBack, setIsPlayingBack] = useState(false);
 
-  const [sendReminders, setSendReminders] = useState(false);
+  const [sendReminders, setSendReminders]     = useState(false);
+  const [patientHistory, setPatientHistory]   = useState<PatientHistory | null>(null);
+  const [lookingUp, setLookingUp]             = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef   = useRef<Blob[]>([]);
@@ -201,10 +210,32 @@ export default function QuickRecord() {
     if (!transcript.trim()) { setErrorMsg("Record a consultation first"); return; }
     setErrorMsg("");
     setIsParsing(true);
+    setPatientHistory(null);
     try {
       const f = await parseClinical(transcript);
       setFields(f);
       setExtracted(true);
+      // Auto-lookup patient history in background as soon as phone extracted
+      const digits = f.patientPhone.replace(/\D/g, "");
+      if (digits.length === 10) {
+        setLookingUp(true);
+        lookupPatient(digits)
+          .then(async ({ patient, isNew }) => {
+            if (isNew) {
+              setPatientHistory({ patient, isNew, lastNote: null, totalNotes: 0 });
+            } else {
+              const data = await getPatient(patient.id);
+              setPatientHistory({
+                patient,
+                isNew: false,
+                lastNote: data.notes[0] ?? null,
+                totalNotes: data.notes.length,
+              });
+            }
+          })
+          .catch(() => {}) // silent — don't block the form
+          .finally(() => setLookingUp(false));
+      }
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Failed to extract");
     } finally {
@@ -221,7 +252,10 @@ export default function QuickRecord() {
     setErrorMsg("");
     setIsSaving(true);
     try {
-      const { patient } = await lookupPatient(phone);
+      // Reuse cached patient from auto-lookup to avoid a second round-trip
+      const { patient } = patientHistory?.patient
+        ? { patient: patientHistory.patient }
+        : await lookupPatient(phone);
       const cleanedMeds = fields.medications.filter((m) => m.name.trim());
       const cleanedDx = fields.diagnoses.length > 0
         ? fields.diagnoses
@@ -375,6 +409,104 @@ export default function QuickRecord() {
                 </div>
               )}
             </div>
+          )}
+
+          {/* Patient history banner */}
+          {extracted && phoneOk && (
+            lookingUp ? (
+              <div className="flex items-center gap-2 text-[12px] text-[#8FA89F] bg-white border border-[#E2EAE7] rounded-xl px-3 py-2.5">
+                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                Checking patient history…
+              </div>
+            ) : patientHistory ? (
+              patientHistory.isNew ? (
+                /* New patient */
+                <div className="flex items-center gap-2.5 bg-blue-50 border border-blue-200 rounded-xl px-3.5 py-3">
+                  <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                    <span className="text-[15px]">🆕</span>
+                  </div>
+                  <div>
+                    <div className="text-[12px] font-semibold text-blue-700">New Patient</div>
+                    <div className="text-[11px] text-blue-500">No previous records — first visit</div>
+                  </div>
+                </div>
+              ) : (
+                /* Returning patient */
+                <div className="bg-white border-2 border-[#0B9E7A] rounded-2xl overflow-hidden">
+                  <div className="flex items-center gap-2.5 bg-teal-50 px-3.5 py-2.5">
+                    <div className="w-7 h-7 rounded-full bg-[#0B9E7A]/15 flex items-center justify-center shrink-0 text-base">
+                      🔁
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[12px] font-semibold text-[#0B9E7A]">Returning Patient</div>
+                      <div className="text-[11px] text-[#4B6358]">
+                        {patientHistory.totalNotes} visit{patientHistory.totalNotes !== 1 ? "s" : ""} on record
+                        {patientHistory.patient.age ? ` · ${patientHistory.patient.age}y` : ""}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/patients/${patientHistory.patient.id}`)}
+                      className="text-[11px] font-semibold text-[#0B9E7A] bg-white border border-[#0B9E7A]/30 rounded-lg px-2.5 py-1 shrink-0"
+                    >
+                      Full history →
+                    </button>
+                  </div>
+
+                  {patientHistory.lastNote && (
+                    <div className="px-3.5 py-3 space-y-2">
+                      <div className="text-[10px] font-semibold text-[#8FA89F] uppercase tracking-wider">
+                        Last visit · {(() => {
+                          const diff = Date.now() - new Date(patientHistory.lastNote.createdAt).getTime();
+                          const d = Math.floor(diff / 86400000);
+                          if (d === 0) return "today";
+                          if (d === 1) return "yesterday";
+                          return `${d} days ago`;
+                        })()}
+                      </div>
+
+                      {/* Last diagnosis */}
+                      {(() => {
+                        const n = patientHistory.lastNote!;
+                        const dx = n.diagnoses?.length > 0 ? n.diagnoses : n.diagnosis?.split(",").map(s => s.trim()).filter(Boolean) ?? [];
+                        return dx.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {dx.slice(0, 3).map((d, i) => (
+                              <span key={i} className="text-[11px] font-semibold bg-teal-50 text-[#0B9E7A] px-2 py-0.5 rounded-full">
+                                {d}
+                              </span>
+                            ))}
+                          </div>
+                        ) : null;
+                      })()}
+
+                      {/* Last medications */}
+                      {patientHistory.lastNote.medications?.length > 0 && (
+                        <div className="text-[11px] text-[#4B6358] leading-relaxed">
+                          <span className="font-semibold text-[#0F1C18]">Rx: </span>
+                          {patientHistory.lastNote.medications.slice(0, 4).map((m, i) => (
+                            <span key={i}>
+                              {i > 0 && <span className="text-[#8FA89F]"> · </span>}
+                              {m.name}{m.dose ? ` ${m.dose}` : ""}{m.frequency ? ` (${m.frequency})` : ""}
+                            </span>
+                          ))}
+                          {patientHistory.lastNote.medications.length > 4 && (
+                            <span className="text-[#8FA89F]"> +{patientHistory.lastNote.medications.length - 4} more</span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Last followup */}
+                      {patientHistory.lastNote.followup && (
+                        <div className="text-[11px] text-amber-700">
+                          📅 Advised follow-up: {patientHistory.lastNote.followup}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )
+            ) : null
           )}
 
           {/* Vitals */}
