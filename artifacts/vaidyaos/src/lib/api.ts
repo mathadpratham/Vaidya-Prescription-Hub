@@ -21,6 +21,13 @@ export type Medication = {
   duration: string;
 };
 
+export type ClinicalPhoto = {
+  data: string;
+  mimeType: string;
+  type: "prescription" | "clinical";
+  caption?: string;
+};
+
 export type ClinicalNote = {
   id: number;
   patientId: string;
@@ -33,6 +40,7 @@ export type ClinicalNote = {
   diagnoses: string[];
   prescription: string | null;
   medications: Medication[];
+  photos: ClinicalPhoto[];
   followup: string | null;
   admit: string | null;
   createdAt: string;
@@ -161,13 +169,33 @@ export async function patchPatient(
   return body.patient;
 }
 
-export async function parseClinical(transcript: string): Promise<ClinicalFields> {
+export async function parseClinical(
+  transcript: string,
+  photos?: ClinicalPhoto[],
+): Promise<ClinicalFields> {
   const res = await fetch(`${apiBase}/parse-clinical`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     credentials: "include",
-    body: JSON.stringify({ transcript }),
+    body: JSON.stringify({ transcript, photos }),
   });
   const data = await handle<{ fields: ClinicalFields }>(res);
   return data.fields;
+}
+
+export async function sendWhatsAppMessage(
+  phone: string,
+  message: string,
+): Promise<{ success: boolean; noApiKey?: boolean; error?: string }> {
+  try {
+    const res = await fetch(`${apiBase}/whatsapp/send`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ phone, message }),
+    });
+    return (await res.json()) as { success: boolean; noApiKey?: boolean; error?: string };
+  } catch {
+    return { success: false, error: "Network error" };
+  }
 }

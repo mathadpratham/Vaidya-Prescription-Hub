@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useLocation, useRoute } from "wouter";
 import { ArrowLeft, AlertCircle, Plus } from "lucide-react";
-import { getPatient, type Patient, type ClinicalNote, type Medication } from "@/lib/api";
-import { prescriptionShareUrl } from "@/lib/whatsapp";
+import { getPatient, sendWhatsAppMessage, type Patient, type ClinicalNote, type Medication, type ClinicalPhoto } from "@/lib/api";
+import { buildPrescriptionText } from "@/lib/whatsapp";
 import { useAuth } from "@/lib/AuthContext";
 
 function formatTime(iso: string) {
@@ -29,6 +29,8 @@ export default function PatientDetail() {
   const [notes, setNotes] = useState<ClinicalNote[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [waStatus, setWaStatus] = useState<Record<number, "sending" | "sent" | "error" | "nokey">>({});
+  const [expandedPhoto, setExpandedPhoto] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -121,20 +123,42 @@ export default function PatientDetail() {
         ) : (
           <div className="space-y-3">
             {notes.map((n) => {
-              const shareUrl = prescriptionShareUrl(patient, n, doctor?.name ?? n.doctorName);
+              const hasPhone = !!(patient.phone && patient.phone.replace(/\D/g, "").length >= 10);
+              const rxText = hasPhone ? buildPrescriptionText(patient, n, doctor?.name ?? n.doctorName) : null;
+              const noteWaStatus = waStatus[n.id];
+              const clinicalPhotos = (n.photos ?? []).filter((p: ClinicalPhoto) => p.type === "clinical");
+              const rxPhotos = (n.photos ?? []).filter((p: ClinicalPhoto) => p.type === "prescription");
               return (
                 <div key={n.id} className="bg-white border border-[#E2EAE7] rounded-2xl p-4"
                   data-testid={`note-${n.id}`}>
                   <div className="flex items-center justify-between mb-2.5">
                     <div className="text-[13px] font-semibold text-[#0B9E7A]">{n.doctorName}</div>
                     <div className="flex items-center gap-2">
-                      {shareUrl && (
-                        <a href={shareUrl} target="_blank" rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full bg-[#25D366]/10 text-[#25D366] active:bg-[#25D366]/20 transition"
-                          title="Share prescription on WhatsApp">
+                      {rxText && (
+                        <button type="button"
+                          onClick={() => {
+                            if (noteWaStatus === "sending") return;
+                            setWaStatus((s) => ({ ...s, [n.id]: "sending" }));
+                            void sendWhatsAppMessage(patient.phone!, rxText).then((r) => {
+                              setWaStatus((s) => ({
+                                ...s,
+                                [n.id]: r.noApiKey ? "nokey" : r.success ? "sent" : "error",
+                              }));
+                              setTimeout(() => setWaStatus((s) => { const c = { ...s }; delete c[n.id]; return c; }), 4000);
+                            });
+                          }}
+                          className={`flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full transition ${
+                            noteWaStatus === "sent" ? "bg-green-50 text-green-700" :
+                            noteWaStatus === "nokey" ? "bg-amber-50 text-amber-700" :
+                            noteWaStatus === "error" ? "bg-red-50 text-red-600" :
+                            "bg-[#25D366]/10 text-[#25D366] active:bg-[#25D366]/20"
+                          }`}>
                           <WhatsAppIcon className="w-3.5 h-3.5" />
-                          Share Rx
-                        </a>
+                          {noteWaStatus === "sending" ? "Sending…" :
+                           noteWaStatus === "sent" ? "Sent ✓" :
+                           noteWaStatus === "nokey" ? "No API key" :
+                           noteWaStatus === "error" ? "Failed" : "Share Rx"}
+                        </button>
                       )}
                       <div className="text-xs text-[#8FA89F]">{formatTime(n.createdAt)}</div>
                     </div>
@@ -148,6 +172,36 @@ export default function PatientDetail() {
 
                   <DiagnosisBlock diagnoses={n.diagnoses} fallback={n.diagnosis} />
                   <MedicationTable medications={n.medications} fallback={n.prescription} />
+
+                  {/* Rx scan photos */}
+                  {rxPhotos.length > 0 && (
+                    <div className="mt-3">
+                      <div className="text-[10px] font-semibold text-[#8FA89F] uppercase tracking-wider mb-1.5">Prescription scans</div>
+                      <div className="flex gap-2 overflow-x-auto">
+                        {rxPhotos.map((p: ClinicalPhoto, i: number) => (
+                          <button key={i} type="button" onClick={() => setExpandedPhoto(`data:${p.mimeType};base64,${p.data}`)}>
+                            <img src={`data:${p.mimeType};base64,${p.data}`}
+                              className="w-16 h-16 rounded-lg object-cover border-2 border-[#0B9E7A]/30 shrink-0" alt="Rx scan" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Clinical photos */}
+                  {clinicalPhotos.length > 0 && (
+                    <div className="mt-3">
+                      <div className="text-[10px] font-semibold text-[#8FA89F] uppercase tracking-wider mb-1.5">Clinical photos</div>
+                      <div className="flex gap-2 overflow-x-auto">
+                        {clinicalPhotos.map((p: ClinicalPhoto, i: number) => (
+                          <button key={i} type="button" onClick={() => setExpandedPhoto(`data:${p.mimeType};base64,${p.data}`)}>
+                            <img src={`data:${p.mimeType};base64,${p.data}`}
+                              className="w-16 h-16 rounded-lg object-cover border-2 border-purple-200 shrink-0" alt="Clinical photo" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
                   {(n.followup || n.admit === "Yes") && (
                     <div className="flex flex-wrap gap-1.5 mt-3">
@@ -186,6 +240,20 @@ export default function PatientDetail() {
           <Plus className="w-5 h-5" /> Add New Note
         </button>
       </div>
+
+      {/* Photo lightbox */}
+      {expandedPhoto && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4"
+          onClick={() => setExpandedPhoto(null)}>
+          <img src={expandedPhoto} className="max-w-full max-h-full rounded-xl object-contain" alt="Full photo" />
+          <button type="button"
+            onClick={() => setExpandedPhoto(null)}
+            className="absolute top-4 right-4 w-9 h-9 rounded-full bg-white/20 text-white flex items-center justify-center text-lg font-bold">
+            ×
+          </button>
+        </div>
+      )}
     </div>
   );
 }

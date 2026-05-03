@@ -14,35 +14,68 @@ const ai =
       })
     : null;
 
-const SYSTEM_INSTRUCTION = `You are a medical scribe assistant for Indian doctors.
-You will receive a free-form clinical consultation transcript that may be in Hindi, Kannada, English, or a mix (Hinglish, Devanagari, Roman script).
 
-Extract the following structured fields from the transcript. If a field is not mentioned, return an empty string. Do not invent information.
+type IncomingPhoto = {
+  data: string;
+  mimeType: string;
+  type: "prescription" | "clinical";
+};
+
+function buildSystemInstruction(hasTranscript: boolean, hasPrescriptionPhoto: boolean): string {
+  const base = `You are a medical scribe assistant for Indian doctors.
+Extract the following structured fields. If a field is not mentioned, return an empty string. Do not invent information.
 
 - bp: blood pressure as "systolic/diastolic" e.g. "120/80". Empty if not mentioned.
-- temp: temperature in Fahrenheit as a number string e.g. "102.4". Convert from Celsius if needed (C * 9/5 + 32). Empty if not mentioned.
+- temp: temperature in Fahrenheit as a number string e.g. "102.4". Convert from Celsius if needed. Empty if not mentioned.
 - spo2: SpO2 percentage as a number string e.g. "98". Empty if not mentioned.
-- patientPhone: 10-digit Indian mobile number of the patient as spoken (digits only, no spaces or dashes, e.g. "9876543210"). Empty if not mentioned.
-- patientName: full name of the patient as spoken during the consultation (e.g. "Suresh Kumar"). Empty if not mentioned.
-- patientAge: age of the patient as a number string (e.g. "45"). Empty if not mentioned.
-- diagnosis: short diagnosis or impression, e.g. "Viral fever", "Suspected NSTEMI". Empty if not mentioned.
-- diagnoses: array of distinct diagnoses, each a short string. Empty array if none.
-- prescription: short summary of medicines prescribed (drug + dose + frequency comma-separated), e.g. "Paracetamol 500mg TDS, Cetirizine 10mg HS". Empty if no medicines. (Kept for backward compatibility — also fill medications below.)
-- medications: array of medicines. For each medicine return:
-    - name: drug name (e.g. "Paracetamol", "Amoxicillin")
-    - dose: strength + unit (e.g. "500mg", "10ml", "5mg/kg")
-    - frequency: dosing schedule, expanded plainly (e.g. "1-0-1" for morning-noon-night, "TDS" → "1-1-1", "BD" → "1-0-1", "OD" → "1-0-0", "HS" → "0-0-1", "SOS" → "as needed"). Use "1-0-1" style when possible.
-    - duration: how many days/weeks (e.g. "5 days", "2 weeks", "ongoing"). Empty string if not mentioned.
-  Empty array if no medicines.
-- followup: follow-up duration or instruction, e.g. "3 days", "2 weeks", "as needed". Empty if not mentioned.
-- admit: "Yes" if admission is recommended, otherwise "No".
+- patientPhone: 10-digit Indian mobile number (digits only). Empty if not mentioned.
+- patientName: full name of the patient. Empty if not mentioned.
+- patientAge: age as a number string e.g. "45". Empty if not mentioned.
+- diagnosis: short diagnosis e.g. "Viral fever". Empty if not mentioned.
+- diagnoses: array of distinct diagnoses. Empty array if none.
+- prescription: short summary of medicines (drug + dose + frequency comma-separated). Empty if none.
+- medications: array of medicines with name, dose, frequency (use "1-0-1" style), duration. Empty array if none.
+- followup: follow-up duration e.g. "3 days". Empty if not mentioned.
+- admit: "Yes" if admission recommended, otherwise "No".
 
 Output ONLY valid JSON matching the provided schema.`;
 
+  if (hasTranscript && hasPrescriptionPhoto) {
+    return `${base}
+
+IMPORTANT: You have BOTH a voice transcript AND a handwritten prescription image.
+- Extract patient details (name, phone, age) and vitals (BP, temp, SpO2) from the TRANSCRIPT.
+- Extract the medication list from the HANDWRITTEN PRESCRIPTION IMAGE — the photo is the authoritative source for drugs, doses and frequencies.
+- If the transcript also mentions medicines, cross-check and reconcile with the photo. Prefer the photo for drug names and doses.`;
+  }
+  if (!hasTranscript && hasPrescriptionPhoto) {
+    return `${base}
+
+You are reading a HANDWRITTEN PRESCRIPTION IMAGE. Extract all fields visible in the prescription photo.
+Patient details like name, age, phone may or may not be written — extract what is visible.`;
+  }
+  return `${base}
+
+You will receive a free-form clinical consultation transcript that may be in Hindi, Kannada, English, or a mix (Hinglish, Devanagari, Roman script). Extract all fields from it.`;
+}
+
 router.post("/parse-clinical", async (req: Request, res: Response) => {
   const transcript: unknown = req.body?.transcript;
-  if (typeof transcript !== "string" || !transcript.trim()) {
-    return res.status(400).json({ error: "transcript is required" });
+  const photosRaw: unknown = req.body?.photos;
+
+  const transcriptText = typeof transcript === "string" ? transcript.trim() : "";
+  const photos: IncomingPhoto[] = Array.isArray(photosRaw)
+    ? (photosRaw as IncomingPhoto[]).filter(
+        (p) => p && typeof p.data === "string" && typeof p.mimeType === "string",
+      )
+    : [];
+
+  const prescriptionPhotos = photos.filter((p) => p.type === "prescription");
+  const hasTranscript = transcriptText.length > 0;
+  const hasPrescriptionPhoto = prescriptionPhotos.length > 0;
+
+  if (!hasTranscript && !hasPrescriptionPhoto) {
+    return res.status(400).json({ error: "transcript or prescription photo is required" });
   }
 
   if (!ai) {
@@ -53,16 +86,30 @@ router.post("/parse-clinical", async (req: Request, res: Response) => {
   }
 
   try {
+    const userParts: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [];
+
+    if (hasTranscript) {
+      userParts.push({ text: `Voice Transcript:\n${transcriptText}` });
+    }
+    for (const photo of prescriptionPhotos) {
+      userParts.push({
+        inlineData: { mimeType: photo.mimeType, data: photo.data },
+      });
+    }
+    if (!hasTranscript && hasPrescriptionPhoto) {
+      userParts.push({ text: "Extract all prescription fields from the image above." });
+    }
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
         {
           role: "user",
-          parts: [{ text: `Transcript:\n${transcript}` }],
+          parts: userParts,
         },
       ],
       config: {
-        systemInstruction: SYSTEM_INSTRUCTION,
+        systemInstruction: buildSystemInstruction(hasTranscript, hasPrescriptionPhoto),
         responseMimeType: "application/json",
         maxOutputTokens: 2048,
         responseSchema: {

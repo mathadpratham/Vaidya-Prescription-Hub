@@ -16,6 +16,13 @@ export type Medication = {
   duration: string;
 };
 
+export type ClinicalPhoto = {
+  data: string;
+  mimeType: string;
+  type: "prescription" | "clinical";
+  caption?: string;
+};
+
 export const patientsTable = pgTable("patients", {
   id: text("id").primaryKey(),
   phone: text("phone").unique(),
@@ -46,6 +53,7 @@ export const clinicalNotesTable = pgTable("clinical_notes", {
   prescription: text("prescription"),
   diagnoses: jsonb("diagnoses").$type<string[]>().default([]).notNull(),
   medications: jsonb("medications").$type<Medication[]>().default([]).notNull(),
+  photos: jsonb("photos").$type<ClinicalPhoto[]>().default([]).notNull(),
   followup: text("followup"),
   admit: text("admit"),
   createdAt: timestamp("created_at", { withTimezone: true })

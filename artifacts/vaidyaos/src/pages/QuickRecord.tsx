@@ -2,14 +2,33 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import {
   ArrowLeft, AlertCircle, Mic, Square, Play,
-  Loader2, Plus, Trash2, CheckCircle2,
+  Loader2, Plus, Trash2, CheckCircle2, Camera, X,
 } from "lucide-react";
 import {
-  apiBase, lookupPatient, getPatient, saveNote, parseClinical,
-  type ClinicalFields, type Medication, type Patient, type ClinicalNote,
+  apiBase, lookupPatient, getPatient, saveNote, parseClinical, sendWhatsAppMessage,
+  type ClinicalFields, type Medication, type Patient, type ClinicalNote, type ClinicalPhoto,
 } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
-import { buildCombinedReminderUrl } from "@/lib/whatsapp";
+import { buildReminderText } from "@/lib/whatsapp";
+
+async function compressImage(file: File): Promise<{ data: string; mimeType: string }> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const MAX = 1200;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(img.width * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
+      resolve({ data: dataUrl.split(",")[1], mimeType: "image/jpeg" });
+    };
+    img.src = url;
+  });
+}
 
 type PatientHistory = {
   patient: Patient;
@@ -60,6 +79,10 @@ export default function QuickRecord() {
   const [sendReminders, setSendReminders]     = useState(false);
   const [patientHistory, setPatientHistory]   = useState<PatientHistory | null>(null);
   const [lookingUp, setLookingUp]             = useState(false);
+  const [photos, setPhotos]                   = useState<ClinicalPhoto[]>([]);
+  const [waToast, setWaToast]                 = useState("");
+
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef   = useRef<Blob[]>([]);
@@ -207,12 +230,16 @@ export default function QuickRecord() {
   };
 
   const handleExtract = async () => {
-    if (!transcript.trim()) { setErrorMsg("Record a consultation first"); return; }
+    const rxPhotos = photos.filter((p) => p.type === "prescription");
+    if (!transcript.trim() && rxPhotos.length === 0) {
+      setErrorMsg("Record your voice or take a photo of the prescription first");
+      return;
+    }
     setErrorMsg("");
     setIsParsing(true);
     setPatientHistory(null);
     try {
-      const f = await parseClinical(transcript);
+      const f = await parseClinical(transcript, rxPhotos.length > 0 ? rxPhotos : undefined);
       setFields(f);
       setExtracted(true);
       // Auto-lookup patient history in background as soon as phone extracted
@@ -268,6 +295,7 @@ export default function QuickRecord() {
         diagnoses: cleanedDx,
         prescription: fields.prescription || cleanedMeds.map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ""}${m.frequency ? ` ${m.frequency}` : ""}`).join(", "),
         medications: cleanedMeds,
+        photos,
         followup: fields.followup,
         admit: fields.admit,
         patientName: fields.patientName || undefined,
@@ -275,8 +303,15 @@ export default function QuickRecord() {
       } as Parameters<typeof saveNote>[1]);
       setSavedOk(true);
       if (sendReminders && cleanedMeds.length > 0) {
-        const waUrl = buildCombinedReminderUrl(phone, fields.patientName, doctor?.name ?? "Doctor", cleanedMeds, fields.followup);
-        if (waUrl) window.open(waUrl, "_blank", "noopener,noreferrer");
+        const reminderText = buildReminderText(fields.patientName, doctor?.name ?? "Doctor", cleanedMeds, fields.followup);
+        if (reminderText) {
+          void sendWhatsAppMessage(phone, reminderText).then((r) => {
+            if (r.noApiKey) setWaToast("WhatsApp API not configured yet — add key in settings");
+            else if (r.success) setWaToast("✓ Reminder sent via WhatsApp");
+            else setWaToast(`WhatsApp error: ${r.error ?? "unknown"}`);
+            setTimeout(() => setWaToast(""), 4000);
+          });
+        }
       }
       setTimeout(() => navigate(`/patients/${patient.id}`), 900);
     } catch (err) {
@@ -288,7 +323,9 @@ export default function QuickRecord() {
 
   const phoneOk = fields.patientPhone.replace(/\D/g, "").length === 10;
   const hasMeds  = fields.medications.some((m) => m.name.trim());
+  const hasRxPhoto = photos.some((p) => p.type === "prescription");
   const showReminderToggle = extracted && phoneOk && hasMeds;
+  const canExtract = (transcript.trim().length > 0 || hasRxPhoto) && !isParsing && !isRecording;
 
   const min = Math.floor(recordSeconds / 60);
   const sec = recordSeconds % 60;
@@ -352,36 +389,101 @@ export default function QuickRecord() {
           </div>
         </div>
 
-        {/* Mic + timer */}
+        {/* Mic + Camera + timer */}
         <div className="flex flex-col items-center gap-2 py-4">
           <div className="font-mono text-2xl text-[#0F1C18] font-medium">
             {min}:{sec.toString().padStart(2, "0")}
           </div>
-          <div className="relative">
-            {isRecording && (
-              <>
-                <span className="absolute inset-0 -m-1 rounded-full border-2 border-red-500 animate-ping" />
-                <span className="absolute inset-0 -m-1 rounded-full border-2 border-red-500 animate-ping" style={{ animationDelay: "0.5s" }} />
-              </>
-            )}
+          <div className="flex items-center gap-5">
+            <div className="relative">
+              {isRecording && (
+                <>
+                  <span className="absolute inset-0 -m-1 rounded-full border-2 border-red-500 animate-ping" />
+                  <span className="absolute inset-0 -m-1 rounded-full border-2 border-red-500 animate-ping" style={{ animationDelay: "0.5s" }} />
+                </>
+              )}
+              <button type="button"
+                onClick={() => { if (isRecording) stopRecording(); else void startRecording(); }}
+                className={`relative w-[72px] h-[72px] rounded-full flex items-center justify-center text-white shadow-lg transition active:scale-95 ${isRecording ? "bg-red-500 shadow-red-500/40" : "bg-[#0B9E7A] shadow-teal-500/40"}`}
+                aria-label={isRecording ? "Stop" : "Record"}>
+                {isRecording ? <Square className="w-7 h-7" fill="currentColor" /> : <Mic className="w-7 h-7" />}
+              </button>
+            </div>
+
+            {/* Camera button */}
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                void compressImage(file).then(({ data, mimeType }) => {
+                  setPhotos((prev) => [...prev, { data, mimeType, type: "prescription" }]);
+                });
+                e.target.value = "";
+              }}
+            />
             <button type="button"
-              onClick={() => { if (isRecording) stopRecording(); else void startRecording(); }}
-              className={`relative w-[72px] h-[72px] rounded-full flex items-center justify-center text-white shadow-lg transition active:scale-95 ${isRecording ? "bg-red-500 shadow-red-500/40" : "bg-[#0B9E7A] shadow-teal-500/40"}`}
-              aria-label={isRecording ? "Stop" : "Record"}>
-              {isRecording ? <Square className="w-7 h-7" fill="currentColor" /> : <Mic className="w-7 h-7" />}
+              onClick={() => cameraInputRef.current?.click()}
+              disabled={isRecording}
+              className="w-[52px] h-[52px] rounded-full border-2 border-[#E2EAE7] bg-white flex flex-col items-center justify-center text-[#4B6358] active:bg-[#E2EAE7] disabled:opacity-40 transition gap-0.5"
+              aria-label="Add photo">
+              <Camera className="w-5 h-5" />
+              {photos.length > 0 && (
+                <span className="text-[9px] font-bold text-[#0B9E7A]">{photos.length}</span>
+              )}
             </button>
           </div>
+
           <div className="text-xs text-[#4B6358] font-medium text-center px-8">
-            {isTranscribing ? "Transcribing…" : isRecording ? "Recording… ask patient name & phone" : transcript ? "Done. Extract fields below." : "Tap mic to start"}
+            {isTranscribing ? "Transcribing…" : isRecording ? "Recording… ask patient name & phone" : transcript ? "Done. Extract fields below." : "Tap mic to speak or camera to scan Rx"}
           </div>
         </div>
+
+        {/* Photo strip */}
+        {photos.length > 0 && (
+          <div className="flex gap-2.5 overflow-x-auto pb-1 px-4 mb-1">
+            {photos.map((p, i) => (
+              <div key={i} className="relative shrink-0">
+                <img
+                  src={`data:${p.mimeType};base64,${p.data}`}
+                  className={`w-[70px] h-[70px] rounded-xl object-cover border-2 ${p.type === "prescription" ? "border-[#0B9E7A]" : "border-purple-400"}`}
+                  alt={p.type}
+                />
+                {/* Delete */}
+                <button type="button"
+                  onClick={() => setPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                  className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 rounded-full text-white flex items-center justify-center shadow">
+                  <X className="w-3 h-3" />
+                </button>
+                {/* Type toggle */}
+                <button type="button"
+                  onClick={() => setPhotos((prev) => prev.map((ph, idx) =>
+                    idx === i ? { ...ph, type: ph.type === "prescription" ? "clinical" : "prescription" } : ph,
+                  ))}
+                  className={`absolute bottom-0 left-0 right-0 text-[9px] font-bold py-0.5 text-center rounded-b-xl ${p.type === "prescription" ? "bg-[#0B9E7A] text-white" : "bg-purple-500 text-white"}`}>
+                  {p.type === "prescription" ? "Rx scan" : "Clinical 📷"}
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div className="px-4 space-y-3">
           {/* Extract button */}
           <button type="button" onClick={() => void handleExtract()}
-            disabled={!transcript.trim() || isParsing || isRecording}
+            disabled={!canExtract}
             className="w-full bg-white border border-[#0B9E7A] text-[#0B9E7A] rounded-xl py-3 text-sm font-semibold active:bg-teal-50 disabled:border-[#E2EAE7] disabled:text-[#8FA89F] transition flex items-center justify-center gap-2">
-            {isParsing ? <><Loader2 className="w-4 h-4 animate-spin" /> Extracting…</> : "✨ Extract patient info & clinical fields"}
+            {isParsing
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> {hasRxPhoto && transcript.trim() ? "Tallying voice + photo…" : hasRxPhoto ? "Reading prescription…" : "Extracting…"}</>
+              : hasRxPhoto && transcript.trim()
+                ? "✨ Tally voice + Rx photo"
+                : hasRxPhoto
+                  ? "✨ Read prescription photo"
+                  : "✨ Extract patient info & clinical fields"}
           </button>
 
           {/* Patient identity */}
@@ -601,21 +703,28 @@ export default function QuickRecord() {
                   Send WhatsApp medicine reminders
                 </div>
                 <div className="text-[11px] text-[#8FA89F] mt-0.5">
-                  Get ready-to-send WA links per dose time after saving
+                  Sends silently in background — no WhatsApp window opens
                 </div>
               </div>
               <WhatsAppIcon className={`w-5 h-5 shrink-0 ${sendReminders ? "text-[#25D366]" : "text-[#8FA89F]"}`} />
             </button>
           )}
 
+          {/* WhatsApp send toast */}
+          {waToast && (
+            <div className={`text-[12px] font-semibold px-3 py-2.5 rounded-xl text-center ${waToast.startsWith("✓") ? "bg-green-50 text-green-700" : "bg-amber-50 text-amber-700"}`}>
+              {waToast}
+            </div>
+          )}
+
           {/* Save button */}
           {extracted && (
             <button type="button" onClick={() => void handleSave()}
-              disabled={isSaving || !transcript.trim()}
+              disabled={isSaving || (!transcript.trim() && !hasRxPhoto)}
               className={`w-full rounded-2xl py-4 text-base font-semibold transition flex items-center justify-center gap-2 ${savedOk ? "bg-emerald-600 text-white" : "bg-[#0B9E7A] text-white active:bg-[#077A5E] disabled:bg-[#E2EAE7] disabled:text-[#8FA89F]"}`}
               data-testid="button-save-emr">
               {savedOk
-                ? (sendReminders ? "✓ Saved! Opening WhatsApp…" : "✓ Saved to EMR!")
+                ? (sendReminders ? "✓ Saved! Sending via WhatsApp…" : "✓ Saved to EMR!")
                 : isSaving ? "Saving…"
                 : "Save to EMR"}
             </button>

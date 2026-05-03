@@ -35,6 +35,13 @@ const medicationSchema = z.object({
   duration: z.string().trim().default(""),
 });
 
+const photoSchema = z.object({
+  data: z.string(),
+  mimeType: z.string(),
+  type: z.enum(["prescription", "clinical"]),
+  caption: z.string().optional(),
+});
+
 const newNoteSchema = z.object({
   doctorName: z.string().trim().optional(),
   transcript: z.string().optional(),
@@ -45,6 +52,7 @@ const newNoteSchema = z.object({
   diagnoses: z.array(z.string().trim().min(1)).optional(),
   prescription: z.string().optional(),
   medications: z.array(medicationSchema).optional(),
+  photos: z.array(photoSchema).optional(),
   followup: z.string().optional(),
   admit: z.string().optional(),
   patientName: z.string().trim().optional(),
@@ -249,6 +257,7 @@ router.post("/patients/:id/notes", async (req, res) => {
         diagnoses: parsed.data.diagnoses ?? [],
         prescription: parsed.data.prescription,
         medications: parsed.data.medications ?? [],
+        photos: parsed.data.photos ?? [],
         followup: parsed.data.followup,
         admit: parsed.data.admit,
       })
