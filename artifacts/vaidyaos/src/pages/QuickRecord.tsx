@@ -1,48 +1,31 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import {
-  ArrowLeft,
-  AlertCircle,
-  Mic,
-  Square,
-  Play,
-  Loader2,
-  Plus,
-  Trash2,
-  CheckCircle2,
+  ArrowLeft, AlertCircle, Mic, Square, Play,
+  Loader2, Plus, Trash2, CheckCircle2,
 } from "lucide-react";
 import {
-  apiBase,
-  lookupPatient,
-  saveNote,
-  parseClinical,
-  type ClinicalFields,
-  type Medication,
+  apiBase, lookupPatient, saveNote, parseClinical,
+  type ClinicalFields, type Medication,
 } from "@/lib/api";
 import { useAuth } from "@/lib/AuthContext";
+import { buildReminderUrls, type ReminderSlot } from "@/lib/whatsapp";
 
 type LanguageCode = "unknown" | "en-IN" | "hi-IN" | "kn-IN";
 
 const LANGUAGE_OPTIONS: { value: LanguageCode; label: string }[] = [
   { value: "unknown", label: "Auto-detect / स्वचालित" },
-  { value: "en-IN", label: "English (India)" },
-  { value: "hi-IN", label: "Hindi / हिन्दी" },
-  { value: "kn-IN", label: "Kannada / ಕನ್ನಡ" },
+  { value: "en-IN",  label: "English (India)" },
+  { value: "hi-IN",  label: "Hindi / हिन्दी" },
+  { value: "kn-IN",  label: "Kannada / ಕನ್ನಡ" },
 ];
 
 const EMPTY_FIELDS: ClinicalFields = {
-  bp: "",
-  temp: "",
-  spo2: "",
-  patientPhone: "",
-  patientName: "",
-  patientAge: "",
-  diagnosis: "",
-  diagnoses: [],
-  prescription: "",
-  medications: [],
-  followup: "",
-  admit: "No",
+  bp: "", temp: "", spo2: "",
+  patientPhone: "", patientName: "", patientAge: "",
+  diagnosis: "", diagnoses: [],
+  prescription: "", medications: [],
+  followup: "", admit: "No",
 };
 
 const EMPTY_MED: Medication = { name: "", dose: "", frequency: "", duration: "" };
@@ -51,31 +34,36 @@ export default function QuickRecord() {
   const [, navigate] = useLocation();
   const { doctor } = useAuth();
 
-  const [language, setLanguage] = useState<LanguageCode>("unknown");
-  const [transcript, setTranscript] = useState("");
-  const [fields, setFields] = useState<ClinicalFields>(EMPTY_FIELDS);
-  const [extracted, setExtracted] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
+  const [language, setLanguage]       = useState<LanguageCode>("unknown");
+  const [transcript, setTranscript]   = useState("");
+  const [fields, setFields]           = useState<ClinicalFields>(EMPTY_FIELDS);
+  const [extracted, setExtracted]     = useState(false);
+  const [errorMsg, setErrorMsg]       = useState("");
   const [detectedLang, setDetectedLang] = useState("");
 
-  const [isRecording, setIsRecording] = useState(false);
+  const [isRecording, setIsRecording]     = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [isParsing, setIsParsing] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [savedOk, setSavedOk] = useState(false);
+  const [isParsing, setIsParsing]         = useState(false);
+  const [isSaving, setIsSaving]           = useState(false);
+  const [savedOk, setSavedOk]             = useState(false);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [recordedSegments, setRecordedSegments] = useState<{ url: string; mime: string }[]>([]);
   const [isPlayingBack, setIsPlayingBack] = useState(false);
 
+  const [sendReminders, setSendReminders] = useState(false);
+  const [reminderSlots, setReminderSlots] = useState<ReminderSlot[]>([]);
+  const [sentSlots, setSentSlots]         = useState<Set<number>>(new Set());
+  const [savedPatientId, setSavedPatientId] = useState("");
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef   = useRef<Blob[]>([]);
+  const mediaStreamRef   = useRef<MediaStream | null>(null);
   const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
   const playbackIndexRef = useRef(0);
-  const rotateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const recordTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const isStoppingRef = useRef(false);
-  const pendingRef = useRef(0);
+  const rotateTimerRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const recordTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isStoppingRef    = useRef(false);
+  const pendingRef       = useRef(0);
 
   const SEGMENT_MS = 25_000;
 
@@ -88,13 +76,8 @@ export default function QuickRecord() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const stopMediaTracks = () => {
-    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-    mediaStreamRef.current = null;
-  };
-  const clearRotateTimer = () => {
-    if (rotateTimerRef.current) { clearTimeout(rotateTimerRef.current); rotateTimerRef.current = null; }
-  };
+  const stopMediaTracks = () => { mediaStreamRef.current?.getTracks().forEach((t) => t.stop()); mediaStreamRef.current = null; };
+  const clearRotateTimer = () => { if (rotateTimerRef.current) { clearTimeout(rotateTimerRef.current); rotateTimerRef.current = null; } };
   const stopPlayback = () => {
     const a = playbackAudioRef.current;
     if (a) { a.onended = null; a.pause(); a.src = ""; }
@@ -130,11 +113,7 @@ export default function QuickRecord() {
     return pref.find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)) ?? "";
   };
 
-  const buildRecorder = (
-    stream: MediaStream,
-    onSegment: (b: Blob, m: string) => void,
-    onFinal: () => void,
-  ): MediaRecorder => {
+  const buildRecorder = (stream: MediaStream, onSegment: (b: Blob, m: string) => void, onFinal: () => void): MediaRecorder => {
     const mime = pickMimeType();
     const opts: MediaRecorderOptions = { audioBitsPerSecond: 128000 };
     if (mime) opts.mimeType = mime;
@@ -152,13 +131,7 @@ export default function QuickRecord() {
       }
       if (isStoppingRef.current) onFinal();
     };
-    rec.onerror = () => {
-      setErrorMsg("Recording error");
-      isStoppingRef.current = true;
-      clearRotateTimer();
-      stopMediaTracks();
-      setIsRecording(false);
-    };
+    rec.onerror = () => { setErrorMsg("Recording error"); isStoppingRef.current = true; clearRotateTimer(); stopMediaTracks(); setIsRecording(false); };
     return rec;
   };
 
@@ -180,6 +153,8 @@ export default function QuickRecord() {
     setErrorMsg("");
     setSavedOk(false);
     setExtracted(false);
+    setReminderSlots([]);
+    setSentSlots(new Set());
     if (!navigator.mediaDevices?.getUserMedia) { setErrorMsg("Browser does not support microphone"); return; }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1, sampleRate: 16000 } });
@@ -245,7 +220,7 @@ export default function QuickRecord() {
   const handleSave = async () => {
     const phone = fields.patientPhone.replace(/\D/g, "");
     if (phone.length !== 10) {
-      setErrorMsg("Patient phone number not found in transcript. Please ask the patient's number and re-record.");
+      setErrorMsg("Patient phone number not found. Ask the patient and type it above.");
       return;
     }
     setErrorMsg("");
@@ -259,9 +234,7 @@ export default function QuickRecord() {
       await saveNote(patient.id, {
         transcript,
         doctorName: doctor?.name ?? "Doctor",
-        bp: fields.bp,
-        temp: fields.temp,
-        spo2: fields.spo2,
+        bp: fields.bp, temp: fields.temp, spo2: fields.spo2,
         diagnosis: fields.diagnosis || cleanedDx.join(", "),
         diagnoses: cleanedDx,
         prescription: fields.prescription || cleanedMeds.map((m) => `${m.name}${m.dose ? ` ${m.dose}` : ""}${m.frequency ? ` ${m.frequency}` : ""}`).join(", "),
@@ -272,13 +245,24 @@ export default function QuickRecord() {
         patientAge: fields.patientAge ? Number(fields.patientAge) : undefined,
       } as Parameters<typeof saveNote>[1]);
       setSavedOk(true);
-      setTimeout(() => navigate(`/patients/${patient.id}`), 800);
+      setSavedPatientId(patient.id);
+      if (sendReminders && cleanedMeds.length > 0) {
+        const slots = buildReminderUrls(phone, fields.patientName, doctor?.name ?? "Doctor", cleanedMeds, fields.followup);
+        setReminderSlots(slots);
+      } else {
+        setTimeout(() => navigate(`/patients/${patient.id}`), 800);
+      }
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setIsSaving(false);
     }
   };
+
+  const phoneOk = fields.patientPhone.replace(/\D/g, "").length === 10;
+  const hasMeds  = fields.medications.some((m) => m.name.trim());
+  const showReminderToggle = extracted && phoneOk && hasMeds;
+  const showReminderPanel  = savedOk && reminderSlots.length > 0;
 
   const min = Math.floor(recordSeconds / 60);
   const sec = recordSeconds % 60;
@@ -321,9 +305,7 @@ export default function QuickRecord() {
           {/* Live transcript */}
           <div className="bg-white border border-[#E2EAE7] rounded-2xl p-4 min-h-[140px] mb-3">
             <div className="flex items-center justify-between mb-2">
-              <div className="text-[11px] font-semibold text-[#8FA89F] tracking-wider uppercase">
-                Live Transcript
-              </div>
+              <div className="text-[11px] font-semibold text-[#8FA89F] tracking-wider uppercase">Live Transcript</div>
               <div className="flex items-center gap-2">
                 {detectedLang && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-50 text-[#0B9E7A] font-semibold">
@@ -376,41 +358,26 @@ export default function QuickRecord() {
             {isParsing ? <><Loader2 className="w-4 h-4 animate-spin" /> Extracting…</> : "✨ Extract patient info & clinical fields"}
           </button>
 
-          {/* Extracted patient identity */}
+          {/* Patient identity */}
           {extracted && (
-            <div className={`rounded-2xl border-2 p-4 ${fields.patientPhone.length === 10 ? "bg-teal-50 border-[#0B9E7A]" : "bg-amber-50 border-amber-400"}`}>
+            <div className={`rounded-2xl border-2 p-4 ${phoneOk ? "bg-teal-50 border-[#0B9E7A]" : "bg-amber-50 border-amber-400"}`}>
               <div className="flex items-center gap-2 mb-3">
-                {fields.patientPhone.length === 10
+                {phoneOk
                   ? <CheckCircle2 className="w-4 h-4 text-[#0B9E7A] shrink-0" />
                   : <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />}
-                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#4B6358]">
-                  Patient Identity
-                </div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-[#4B6358]">Patient Identity</div>
               </div>
               <div className="grid grid-cols-3 gap-2">
-                <IdentityField
-                  label="Phone"
-                  value={fields.patientPhone}
+                <IdentityField label="Phone" value={fields.patientPhone}
                   onChange={(v) => setFields({ ...fields, patientPhone: v.replace(/\D/g, "").slice(0, 10) })}
-                  placeholder="10 digits"
-                  warn={fields.patientPhone.length !== 10}
-                  inputMode="numeric"
-                />
-                <IdentityField
-                  label="Name"
-                  value={fields.patientName}
-                  onChange={(v) => setFields({ ...fields, patientName: v })}
-                  placeholder="Patient name"
-                />
-                <IdentityField
-                  label="Age"
-                  value={fields.patientAge}
+                  placeholder="10 digits" warn={!phoneOk} inputMode="numeric" />
+                <IdentityField label="Name" value={fields.patientName}
+                  onChange={(v) => setFields({ ...fields, patientName: v })} placeholder="Patient name" />
+                <IdentityField label="Age" value={fields.patientAge}
                   onChange={(v) => setFields({ ...fields, patientAge: v.replace(/\D/g, "") })}
-                  placeholder="Years"
-                  inputMode="numeric"
-                />
+                  placeholder="Years" inputMode="numeric" />
               </div>
-              {fields.patientPhone.length !== 10 && (
+              {!phoneOk && (
                 <div className="text-[11px] text-amber-700 mt-2 font-medium">
                   Phone not found in transcript. Ask patient and type above.
                 </div>
@@ -497,8 +464,28 @@ export default function QuickRecord() {
             </div>
           )}
 
-          {/* Save */}
-          {extracted && (
+          {/* WhatsApp reminder toggle */}
+          {showReminderToggle && !savedOk && (
+            <button type="button"
+              onClick={() => setSendReminders((v) => !v)}
+              className={`w-full rounded-xl border-2 p-3.5 flex items-center gap-3 transition active:scale-[0.98] ${sendReminders ? "border-[#25D366] bg-[#25D366]/8" : "border-[#E2EAE7] bg-white"}`}>
+              <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center shrink-0 transition ${sendReminders ? "border-[#25D366] bg-[#25D366]" : "border-[#8FA89F]"}`}>
+                {sendReminders && <svg className="w-3 h-3 text-white" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+              </div>
+              <div className="flex-1 text-left">
+                <div className={`text-sm font-semibold ${sendReminders ? "text-[#1a7a42]" : "text-[#0F1C18]"}`}>
+                  Send WhatsApp medicine reminders
+                </div>
+                <div className="text-[11px] text-[#8FA89F] mt-0.5">
+                  Get ready-to-send WA links per dose time after saving
+                </div>
+              </div>
+              <WhatsAppIcon className={`w-5 h-5 shrink-0 ${sendReminders ? "text-[#25D366]" : "text-[#8FA89F]"}`} />
+            </button>
+          )}
+
+          {/* Save button */}
+          {extracted && !showReminderPanel && (
             <button type="button" onClick={() => void handleSave()}
               disabled={isSaving || !transcript.trim()}
               className={`w-full rounded-2xl py-4 text-base font-semibold transition flex items-center justify-center gap-2 ${savedOk ? "bg-emerald-600 text-white" : "bg-[#0B9E7A] text-white active:bg-[#077A5E] disabled:bg-[#E2EAE7] disabled:text-[#8FA89F]"}`}
@@ -506,9 +493,49 @@ export default function QuickRecord() {
               {savedOk ? "✓ Saved to EMR!" : isSaving ? "Saving…" : "Save to EMR"}
             </button>
           )}
+
+          {/* WhatsApp reminder panel (shown after save) */}
+          {showReminderPanel && (
+            <div className="bg-white border-2 border-[#25D366] rounded-2xl p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <WhatsAppIcon className="w-5 h-5 text-[#25D366]" />
+                <div className="text-sm font-semibold text-[#0F1C18]">Send Medicine Reminders</div>
+              </div>
+              <div className="text-[12px] text-[#8FA89F] mb-3">
+                Tap each button to open WhatsApp and send to {fields.patientName || "patient"} (+91 {fields.patientPhone})
+              </div>
+              <div className="space-y-2">
+                {reminderSlots.map((slot, i) => {
+                  const sent = sentSlots.has(i);
+                  return (
+                    <a key={i} href={slot.url} target="_blank" rel="noopener noreferrer"
+                      onClick={() => setSentSlots((p) => new Set([...p, i]))}
+                      className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-semibold transition ${sent ? "bg-[#25D366]/10 text-[#1a7a42]" : "bg-[#25D366] text-white"}`}>
+                      <span className="text-lg leading-none">{slot.emoji}</span>
+                      <span className="flex-1">{slot.label} reminder</span>
+                      {sent && <span className="text-[11px] opacity-70">Sent ✓</span>}
+                    </a>
+                  );
+                })}
+              </div>
+              <button type="button"
+                onClick={() => navigate(`/patients/${savedPatientId}`)}
+                className="w-full mt-3 bg-[#0B9E7A] text-white rounded-xl py-3 text-sm font-semibold active:bg-[#077A5E] transition">
+                Done — View Patient
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function WhatsAppIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+    </svg>
   );
 }
 
@@ -521,15 +548,9 @@ function VitalBox({ label, value }: { label: string; value: string }) {
   );
 }
 
-function IdentityField({
-  label, value, onChange, placeholder, warn, inputMode,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  warn?: boolean;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
+function IdentityField({ label, value, onChange, placeholder, warn, inputMode }: {
+  label: string; value: string; onChange: (v: string) => void;
+  placeholder?: string; warn?: boolean; inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
 }) {
   return (
     <div className={`bg-white rounded-xl border p-2.5 ${warn ? "border-amber-400" : "border-[#E2EAE7]"}`}>
