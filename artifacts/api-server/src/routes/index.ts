@@ -4,9 +4,11 @@ import sarvamRouter from "./sarvam";
 import parsePrescriptionRouter from "./parsePrescription";
 import parseClinicalRouter from "./parseClinical";
 import patientsRouter from "./patients";
+import authRouter from "./auth";
 
 const router: IRouter = Router();
 
+router.use(authRouter);
 router.use(healthRouter);
 router.use(sarvamRouter);
 router.use(parsePrescriptionRouter);

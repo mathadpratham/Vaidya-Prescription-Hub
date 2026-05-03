@@ -18,7 +18,8 @@ export type Medication = {
 
 export const patientsTable = pgTable("patients", {
   id: text("id").primaryKey(),
-  name: text("name").notNull(),
+  phone: text("phone").unique(),
+  name: text("name").notNull().default("Patient"),
   age: integer("age"),
   gender: text("gender"),
   department: text("department"),

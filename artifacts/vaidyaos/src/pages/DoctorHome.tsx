@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Plus, AlertCircle, Stethoscope } from "lucide-react";
+import { Plus, AlertCircle, Stethoscope, LogOut } from "lucide-react";
 import { listPatients, type Patient } from "@/lib/api";
 import { patientInitials } from "@/lib/qr";
+import { useAuth } from "@/lib/AuthContext";
+import { apiBase } from "@/lib/api";
 
 function tagStyle(tag: string) {
   if (tag === "critical")
@@ -12,8 +14,16 @@ function tagStyle(tag: string) {
   return { bg: "bg-teal-50", text: "text-teal-600", label: "New" };
 }
 
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning 👋";
+  if (h < 17) return "Good afternoon 👋";
+  return "Good evening 👋";
+}
+
 export default function DoctorHome() {
   const [, navigate] = useLocation();
+  const { doctor, setDoctor } = useAuth();
   const [patients, setPatients] = useState<Patient[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -36,22 +46,45 @@ export default function DoctorHome() {
     };
   }, []);
 
+  const handleLogout = async () => {
+    await fetch(`${apiBase}/auth/logout`, {
+      method: "POST",
+      credentials: "include",
+    });
+    setDoctor(null);
+  };
+
+  const displayName = doctor?.name ?? "Doctor";
+
   return (
     <div className="min-h-[100dvh] max-w-md mx-auto bg-[#F7F9F8] flex flex-col">
       <div className="bg-gradient-to-br from-[#0B9E7A] to-[#077A5E] text-white px-5 py-6">
-        <div className="flex items-center gap-2 text-white/80 text-xs mb-1">
-          <Stethoscope className="w-4 h-4" />
-          <span>VaidyaOS</span>
+        <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center gap-2 text-white/80 text-xs">
+            <Stethoscope className="w-4 h-4" />
+            <span>VaidyaOS</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleLogout()}
+            className="flex items-center gap-1.5 text-white/70 text-xs hover:text-white transition"
+            aria-label="Logout"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Logout
+          </button>
         </div>
-        <div className="text-sm opacity-80">Good morning 👋</div>
-        <div className="text-2xl font-semibold">Dr. Arun Kumar</div>
+        <div className="text-sm opacity-80">{greeting()}</div>
+        <div className="text-2xl font-semibold">{displayName}</div>
         <div className="grid grid-cols-3 gap-3 mt-4">
           <div className="bg-white/15 rounded-xl px-3 py-2.5">
             <div className="text-xl font-semibold">{patients.length}</div>
             <div className="text-[11px] opacity-80">Patients today</div>
           </div>
           <div className="bg-white/15 rounded-xl px-3 py-2.5">
-            <div className="text-xl font-semibold">2.1h</div>
+            <div className="text-xl font-semibold">
+              {(patients.length * 0.1).toFixed(1)}h
+            </div>
             <div className="text-[11px] opacity-80">Time saved</div>
           </div>
           <div className="bg-white/15 rounded-xl px-3 py-2.5">
@@ -83,13 +116,17 @@ export default function DoctorHome() {
             <div className="text-sm text-center">
               No patients yet.
               <br />
-              Tap the + button to register one.
+              Tap the + button to start a consultation.
             </div>
           </div>
         ) : (
           <div className="space-y-2.5">
             {patients.map((p) => {
               const tag = tagStyle(p.tag);
+              const displayPt =
+                p.name === "Patient" && p.phone
+                  ? `+91 ${p.phone}`
+                  : p.name;
               return (
                 <Link
                   key={p.id}
@@ -105,19 +142,20 @@ export default function DoctorHome() {
                         color: p.color,
                       }}
                     >
-                      {patientInitials(p.name)}
+                      {patientInitials(displayPt)}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[15px] font-semibold text-[#0F1C18] truncate">
-                        {p.name}
+                        {displayPt}
                       </div>
                       <div className="text-xs text-[#4B6358] mt-0.5">
-                        {p.age ?? "—"}y • {p.gender ?? "—"} •{" "}
+                        {p.age ? `${p.age}y • ` : ""}
+                        {p.gender ? `${p.gender} • ` : ""}
                         {p.department ?? "General OPD"}
                       </div>
-                      {p.complaint && (
-                        <div className="text-xs text-[#4B6358] mt-0.5 truncate">
-                          {p.complaint}
+                      {p.phone && p.name !== "Patient" && (
+                        <div className="text-xs text-[#8FA89F] mt-0.5 font-mono">
+                          +91 {p.phone}
                         </div>
                       )}
                     </div>
@@ -141,7 +179,7 @@ export default function DoctorHome() {
 
       <button
         type="button"
-        onClick={() => navigate("/patients/new")}
+        onClick={() => navigate("/record")}
         className="fixed bottom-6 right-[max(1.25rem,calc(50vw-13rem))] w-14 h-14 bg-[#0B9E7A] rounded-2xl flex items-center justify-center text-white shadow-lg shadow-teal-500/40 active:scale-95 transition z-20"
         aria-label="Add patient"
         data-testid="button-add-patient"

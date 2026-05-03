@@ -22,6 +22,9 @@ Extract the following structured fields from the transcript. If a field is not m
 - bp: blood pressure as "systolic/diastolic" e.g. "120/80". Empty if not mentioned.
 - temp: temperature in Fahrenheit as a number string e.g. "102.4". Convert from Celsius if needed (C * 9/5 + 32). Empty if not mentioned.
 - spo2: SpO2 percentage as a number string e.g. "98". Empty if not mentioned.
+- patientPhone: 10-digit Indian mobile number of the patient as spoken (digits only, no spaces or dashes, e.g. "9876543210"). Empty if not mentioned.
+- patientName: full name of the patient as spoken during the consultation (e.g. "Suresh Kumar"). Empty if not mentioned.
+- patientAge: age of the patient as a number string (e.g. "45"). Empty if not mentioned.
 - diagnosis: short diagnosis or impression, e.g. "Viral fever", "Suspected NSTEMI". Empty if not mentioned.
 - diagnoses: array of distinct diagnoses, each a short string. Empty array if none.
 - prescription: short summary of medicines prescribed (drug + dose + frequency comma-separated), e.g. "Paracetamol 500mg TDS, Cetirizine 10mg HS". Empty if no medicines. (Kept for backward compatibility — also fill medications below.)
@@ -68,6 +71,9 @@ router.post("/parse-clinical", async (req: Request, res: Response) => {
             bp: { type: Type.STRING },
             temp: { type: Type.STRING },
             spo2: { type: Type.STRING },
+            patientPhone: { type: Type.STRING },
+            patientName: { type: Type.STRING },
+            patientAge: { type: Type.STRING },
             diagnosis: { type: Type.STRING },
             diagnoses: {
               type: Type.ARRAY,
@@ -95,6 +101,9 @@ router.post("/parse-clinical", async (req: Request, res: Response) => {
             "bp",
             "temp",
             "spo2",
+            "patientPhone",
+            "patientName",
+            "patientAge",
             "diagnosis",
             "diagnoses",
             "prescription",
@@ -106,6 +115,9 @@ router.post("/parse-clinical", async (req: Request, res: Response) => {
             "bp",
             "temp",
             "spo2",
+            "patientPhone",
+            "patientName",
+            "patientAge",
             "diagnosis",
             "diagnoses",
             "prescription",
@@ -164,6 +176,9 @@ router.post("/parse-clinical", async (req: Request, res: Response) => {
         bp: safe("bp"),
         temp: safe("temp"),
         spo2: safe("spo2"),
+        patientPhone: safe("patientPhone").replace(/\D/g, "").slice(-10),
+        patientName: safe("patientName"),
+        patientAge: safe("patientAge"),
         diagnosis: safe("diagnosis"),
         diagnoses,
         prescription: safe("prescription"),

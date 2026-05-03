@@ -2,6 +2,7 @@ export const apiBase = `${import.meta.env.BASE_URL}api`.replace(/\/+/g, "/");
 
 export type Patient = {
   id: string;
+  phone: string | null;
   name: string;
   age: number | null;
   gender: string | null;
@@ -41,6 +42,9 @@ export type ClinicalFields = {
   bp: string;
   temp: string;
   spo2: string;
+  patientPhone: string;
+  patientName: string;
+  patientAge: string;
   diagnosis: string;
   diagnoses: string[];
   prescription: string;
@@ -109,10 +113,37 @@ export async function saveNote(
   return data.note;
 }
 
+export async function lookupPatient(
+  phone: string,
+): Promise<{ patient: Patient; isNew: boolean }> {
+  const res = await fetch(`${apiBase}/patients/lookup`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ phone }),
+  });
+  return handle<{ patient: Patient; isNew: boolean }>(res);
+}
+
+export async function patchPatient(
+  id: string,
+  data: { name?: string; age?: number; phone?: string; gender?: string; department?: string },
+): Promise<Patient> {
+  const res = await fetch(`${apiBase}/patients/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify(data),
+  });
+  const body = await handle<{ patient: Patient }>(res);
+  return body.patient;
+}
+
 export async function parseClinical(transcript: string): Promise<ClinicalFields> {
   const res = await fetch(`${apiBase}/parse-clinical`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({ transcript }),
   });
   const data = await handle<{ fields: ClinicalFields }>(res);
