@@ -90,6 +90,34 @@ router.post("/patients/lookup", async (req, res) => {
   }
 });
 
+router.get("/recent-notes", async (req, res) => {
+  const limit = Math.min(parseInt(String(req.query.limit ?? "5")), 20);
+  try {
+    const notes = await db
+      .select({
+        id: clinicalNotesTable.id,
+        patientId: clinicalNotesTable.patientId,
+        patientName: patientsTable.name,
+        patientColor: patientsTable.color,
+        patientPhone: patientsTable.phone,
+        doctorName: clinicalNotesTable.doctorName,
+        diagnosis: clinicalNotesTable.diagnosis,
+        diagnoses: clinicalNotesTable.diagnoses,
+        medications: clinicalNotesTable.medications,
+        followup: clinicalNotesTable.followup,
+        createdAt: clinicalNotesTable.createdAt,
+      })
+      .from(clinicalNotesTable)
+      .leftJoin(patientsTable, eq(clinicalNotesTable.patientId, patientsTable.id))
+      .orderBy(desc(clinicalNotesTable.createdAt))
+      .limit(limit);
+    res.json({ notes });
+  } catch (err) {
+    req.log.error({ err }, "Failed to fetch recent notes");
+    res.status(500).json({ error: "Failed to fetch recent notes" });
+  }
+});
+
 router.get("/patients", async (req, res) => {
   try {
     const all = await db

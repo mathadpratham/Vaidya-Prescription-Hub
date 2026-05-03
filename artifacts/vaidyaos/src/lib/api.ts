@@ -67,6 +67,28 @@ async function handle<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+export type RecentNote = {
+  id: number;
+  patientId: string;
+  patientName: string | null;
+  patientColor: string | null;
+  patientPhone: string | null;
+  doctorName: string;
+  diagnosis: string | null;
+  diagnoses: string[];
+  medications: Medication[];
+  followup: string | null;
+  createdAt: string;
+};
+
+export async function listRecentNotes(limit = 5): Promise<RecentNote[]> {
+  const res = await fetch(`${apiBase}/recent-notes?limit=${limit}`, {
+    credentials: "include",
+  });
+  const data = await handle<{ notes: RecentNote[] }>(res);
+  return data.notes;
+}
+
 export async function listPatients(): Promise<Patient[]> {
   const res = await fetch(`${apiBase}/patients`);
   const data = await handle<{ patients: Patient[] }>(res);
