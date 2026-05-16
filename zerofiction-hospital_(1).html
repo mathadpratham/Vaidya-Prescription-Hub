@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ZeroFriction — Hospital AI</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --teal: #0B9E7A;
+    --teal-light: #E6F7F3;
+    --teal-dark: #077A5E;
+    --red: #E84040;
+    --red-light: #FEF0F0;
+    --amber: #F59E0B;
+    --amber-light: #FFFBEB;
+    --blue: #2563EB;
+    --blue-light: #EFF6FF;
+    --bg: #F7F9F8;
+    --white: #FFFFFF;
+    --text: #0F1C18;
+    --text2: #4B6358;
+    --text3: #8FA89F;
+    --border: #E2EAE7;
+    --shadow: 0 2px 12px rgba(11,158,122,0.08);
+    --radius: 16px;
+    --radius-sm: 10px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; max-width: 430px; margin: 0 auto; overflow-x: hidden; }
+
+  /* SCREENS */
+  .screen { display: none; min-height: 100vh; flex-direction: column; animation: fadeIn 0.25s ease; }
+  .screen.active { display: flex; }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* NAV */
+  .nav { display: flex; align-items: center; gap: 12px; padding: 16px 20px; background: var(--white); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; }
+  .nav-back { width: 36px; height: 36px; border-radius: 50%; border: 1px solid var(--border); background: var(--white); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 18px; color: var(--text2); flex-shrink: 0; }
+  .nav-title { font-size: 16px; font-weight: 600; color: var(--text); }
+  .nav-sub { font-size: 12px; color: var(--text3); margin-top: 1px; }
+  .nav-badge { margin-left: auto; background: var(--teal-light); color: var(--teal); font-size: 11px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
+
+  /* CONTENT */
+  .content { flex: 1; padding: 20px; overflow-y: auto; }
+  .scroll-content { flex: 1; overflow-y: auto; }
+
+  /* LANDING */
+  #landing { background: var(--white); }
+  .landing-header { padding: 48px 28px 32px; text-align: center; }
+  .logo-mark { width: 72px; height: 72px; background: var(--teal); border-radius: 22px; display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; }
+  .logo-mark svg { width: 36px; height: 36px; fill: white; }
+  .landing-title { font-size: 28px; font-weight: 600; color: var(--text); line-height: 1.2; }
+  .landing-title span { color: var(--teal); }
+  .landing-sub { font-size: 15px; color: var(--text2); margin-top: 10px; line-height: 1.6; }
+  .role-section { padding: 0 20px 40px; }
+  .role-label { font-size: 12px; font-weight: 600; color: var(--text3); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px; }
+  .role-card { background: var(--bg); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 20px; display: flex; align-items: center; gap: 16px; cursor: pointer; margin-bottom: 12px; transition: all 0.18s ease; }
+  .role-card:active { transform: scale(0.98); border-color: var(--teal); background: var(--teal-light); }
+  .role-icon { width: 52px; height: 52px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+  .role-icon.doc { background: var(--teal-light); }
+  .role-icon.nurse { background: var(--blue-light); }
+  .role-info { flex: 1; }
+  .role-name { font-size: 16px; font-weight: 600; color: var(--text); }
+  .role-desc { font-size: 13px; color: var(--text2); margin-top: 3px; }
+  .role-arrow { color: var(--text3); font-size: 20px; }
+  .stats-row { display: flex; gap: 10px; padding: 0 20px 32px; }
+  .stat-box { flex: 1; background: var(--teal-light); border-radius: var(--radius-sm); padding: 14px 12px; text-align: center; }
+  .stat-num { font-size: 22px; font-weight: 600; color: var(--teal); }
+  .stat-label { font-size: 11px; color: var(--teal-dark); margin-top: 3px; line-height: 1.3; }
+
+  /* DOCTOR HOME */
+  .greeting { background: linear-gradient(135deg, var(--teal) 0%, var(--teal-dark) 100%); padding: 24px 20px; color: white; }
+  .greeting-sub { font-size: 13px; opacity: 0.8; margin-bottom: 4px; }
+  .greeting-name { font-size: 22px; font-weight: 600; }
+  .greeting-stats { display: flex; gap: 12px; margin-top: 16px; }
+  .g-stat { background: rgba(255,255,255,0.15); border-radius: 10px; padding: 10px 14px; flex: 1; }
+  .g-stat-num { font-size: 20px; font-weight: 600; }
+  .g-stat-label { font-size: 11px; opacity: 0.8; margin-top: 2px; }
+  .section-title { font-size: 13px; font-weight: 600; color: var(--text3); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 14px; }
+  .patient-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; display: flex; align-items: center; gap: 14px; margin-bottom: 10px; cursor: pointer; transition: all 0.15s ease; }
+  .patient-card:active { background: var(--teal-light); border-color: var(--teal); }
+  .patient-avatar { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 600; flex-shrink: 0; }
+  .patient-info { flex: 1; min-width: 0; }
+  .patient-name { font-size: 15px; font-weight: 600; color: var(--text); }
+  .patient-meta { font-size: 12px; color: var(--text2); margin-top: 2px; }
+  .patient-tag { font-size: 11px; padding: 3px 8px; border-radius: 20px; font-weight: 500; }
+  .tag-new { background: var(--teal-light); color: var(--teal); }
+  .tag-follow { background: var(--blue-light); color: var(--blue); }
+  .tag-critical { background: var(--red-light); color: var(--red); }
+  .fab { position: fixed; bottom: 28px; right: 20px; width: 56px; height: 56px; background: var(--teal); border-radius: 18px; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 20px rgba(11,158,122,0.4); font-size: 26px; color: white; border: none; z-index: 20; transition: transform 0.15s ease; }
+  .fab:active { transform: scale(0.93); }
+
+  /* VOICE RECORD */
+  .voice-patient-bar { background: var(--white); border-bottom: 1px solid var(--border); padding: 14px 20px; display: flex; align-items: center; gap: 12px; }
+  .voice-patient-avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 600; }
+  .voice-area { flex: 1; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .transcript-box { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; min-height: 160px; flex: 1; }
+  .transcript-label { font-size: 11px; font-weight: 600; color: var(--text3); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 10px; }
+  .transcript-text { font-size: 15px; color: var(--text); line-height: 1.7; min-height: 100px; }
+  .transcript-cursor { display: inline-block; width: 2px; height: 16px; background: var(--teal); animation: blink 1s infinite; vertical-align: middle; margin-left: 2px; }
+  @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+  .pulse-ring { position: relative; display: flex; align-items: center; justify-content: center; }
+  .pulse-ring::before, .pulse-ring::after { content: ''; position: absolute; border-radius: 50%; border: 2px solid var(--red); animation: pulse 2s ease-out infinite; }
+  .pulse-ring::after { animation-delay: 0.5s; }
+  @keyframes pulse { 0% { width: 60px; height: 60px; opacity: 0.8; } 100% { width: 110px; height: 110px; opacity: 0; } }
+  .record-btn { width: 72px; height: 72px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 28px; transition: all 0.2s ease; position: relative; z-index: 1; }
+  .record-btn.idle { background: var(--teal); color: white; box-shadow: 0 4px 16px rgba(11,158,122,0.35); }
+  .record-btn.recording { background: var(--red); color: white; box-shadow: 0 4px 16px rgba(232,64,64,0.35); }
+  .record-controls { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px; }
+  .record-status { font-size: 13px; color: var(--text2); font-weight: 500; }
+  .record-time { font-family: 'DM Mono', monospace; font-size: 22px; color: var(--text); font-weight: 500; }
+  .fields-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .field-box { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
+  .field-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; font-weight: 500; }
+  .field-value { font-size: 14px; font-weight: 600; color: var(--text); }
+  .save-btn { background: var(--teal); color: white; border: none; border-radius: var(--radius); padding: 16px; font-size: 16px; font-weight: 600; cursor: pointer; width: 100%; font-family: 'DM Sans', sans-serif; transition: all 0.15s ease; }
+  .save-btn:active { transform: scale(0.98); background: var(--teal-dark); }
+  .save-btn:disabled { background: var(--border); color: var(--text3); cursor: not-allowed; }
+
+  /* NURSE HOME */
+  .nurse-header { background: linear-gradient(135deg, #1E40AF 0%, #1D4ED8 100%); padding: 24px 20px; color: white; }
+  .qr-scan-area { background: var(--white); border: 2px dashed var(--border); border-radius: var(--radius); margin: 20px; padding: 32px 20px; display: flex; flex-direction: column; align-items: center; gap: 14px; cursor: pointer; transition: all 0.2s ease; }
+  .qr-scan-area:active { border-color: var(--teal); background: var(--teal-light); }
+  .qr-icon { font-size: 48px; }
+  .qr-label { font-size: 15px; font-weight: 600; color: var(--text); }
+  .qr-sub { font-size: 13px; color: var(--text2); text-align: center; }
+  .ward-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin: 0 20px 10px; }
+  .ward-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .ward-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .ward-count { font-size: 12px; color: var(--text2); }
+  .bed-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .bed-row:last-child { border-bottom: none; }
+  .bed-num { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text3); width: 30px; }
+  .bed-patient { flex: 1; font-size: 14px; font-weight: 500; color: var(--text); }
+  .bed-status { font-size: 11px; padding: 2px 8px; border-radius: 20px; }
+
+  /* PATIENT DETAIL */
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 16px; }
+  .info-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px; }
+  .info-label { font-size: 11px; color: var(--text3); margin-bottom: 3px; }
+  .info-value { font-size: 14px; font-weight: 600; color: var(--text); }
+  .orders-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+  .orders-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 12px; display: flex; align-items: center; gap: 8px; }
+  .med-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .med-row:last-child { border-bottom: none; }
+  .med-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+  .med-info { flex: 1; }
+  .med-name { font-size: 14px; font-weight: 500; color: var(--text); }
+  .med-dose { font-size: 12px; color: var(--text2); margin-top: 1px; }
+  .med-time { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
+  .time-due { background: var(--amber-light); color: var(--amber); }
+  .time-done { background: var(--teal-light); color: var(--teal); }
+  .time-upcoming { background: var(--bg); color: var(--text3); }
+
+  /* MEDICATION CHECK */
+  .check-area { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  .check-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .check-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 12px; }
+  .check-row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .check-row:last-child { border-bottom: none; }
+  .check-icon { font-size: 20px; }
+  .check-label { flex: 1; font-size: 14px; color: var(--text); }
+  .check-result { font-size: 13px; font-weight: 600; }
+  .result-ok { color: var(--teal); }
+  .result-warn { color: var(--red); }
+  .alert-banner { background: var(--red-light); border: 1.5px solid var(--red); border-radius: var(--radius); padding: 16px; display: flex; gap: 12px; align-items: flex-start; }
+  .alert-icon { font-size: 24px; flex-shrink: 0; }
+  .alert-title { font-size: 15px; font-weight: 700; color: var(--red); }
+  .alert-text { font-size: 13px; color: #7F1D1D; margin-top: 3px; line-height: 1.5; }
+  .success-banner { background: var(--teal-light); border: 1.5px solid var(--teal); border-radius: var(--radius); padding: 16px; display: flex; gap: 12px; align-items: flex-start; }
+  .success-icon { font-size: 24px; flex-shrink: 0; }
+  .success-title { font-size: 15px; font-weight: 700; color: var(--teal); }
+  .success-text { font-size: 13px; color: var(--teal-dark); margin-top: 3px; line-height: 1.5; }
+
+  /* NOTES VIEW */
+  .note-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 12px; }
+  .note-meta { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+  .note-doctor { font-size: 13px; font-weight: 600; color: var(--teal); }
+  .note-time { font-size: 12px; color: var(--text3); }
+  .note-text { font-size: 14px; color: var(--text); line-height: 1.7; }
+  .vitals-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .vital-box { background: var(--bg); border-radius: 10px; padding: 10px; text-align: center; }
+  .vital-num { font-size: 18px; font-weight: 600; color: var(--text); }
+  .vital-label { font-size: 10px; color: var(--text3); margin-top: 2px; }
+
+  /* ADD PATIENT */
+  .form-group { margin-bottom: 14px; }
+  .form-label { font-size: 13px; font-weight: 500; color: var(--text2); margin-bottom: 6px; display: block; }
+  .form-input { width: 100%; border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 15px; font-family: 'DM Sans', sans-serif; color: var(--text); background: var(--white); outline: none; transition: border-color 0.15s; }
+  .form-input:focus { border-color: var(--teal); }
+  .form-select { width: 100%; border: 1.5px solid var(--border); border-radius: var(--radius-sm); padding: 12px 14px; font-size: 15px; font-family: 'DM Sans', sans-serif; color: var(--text); background: var(--white); outline: none; appearance: none; }
+  .qr-display { background: var(--teal-light); border: 2px solid var(--teal); border-radius: var(--radius); padding: 24px; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+  .qr-display canvas { border-radius: 8px; }
+  .qr-patient-name { font-size: 16px; font-weight: 600; color: var(--teal-dark); }
+  .qr-id { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--text2); }
+
+  /* BOTTOM TABS */
+  .bottom-tabs { display: flex; background: var(--white); border-top: 1px solid var(--border); position: sticky; bottom: 0; }
+  .tab-btn { flex: 1; padding: 12px 8px 16px; display: flex; flex-direction: column; align-items: center; gap: 4px; cursor: pointer; border: none; background: transparent; font-family: 'DM Sans', sans-serif; }
+  .tab-icon { font-size: 22px; }
+  .tab-label { font-size: 11px; color: var(--text3); font-weight: 500; }
+  .tab-btn.active .tab-label { color: var(--teal); }
+  .tab-btn.active .tab-icon { filter: none; }
+
+  /* UTILITY */
+  .chip { display: inline-flex; align-items: center; gap: 4px; background: var(--teal-light); color: var(--teal); font-size: 12px; font-weight: 600; padding: 4px 10px; border-radius: 20px; }
+  .divider { height: 1px; background: var(--border); margin: 4px 0; }
+  .empty-state { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 40px 20px; color: var(--text3); }
+  .empty-icon { font-size: 40px; }
+  .empty-text { font-size: 14px; text-align: center; line-height: 1.6; }
+  .btn-secondary { background: var(--bg); color: var(--text); border: 1.5px solid var(--border); border-radius: var(--radius); padding: 14px; font-size: 15px; font-weight: 600; cursor: pointer; width: 100%; font-family: 'DM Sans', sans-serif; margin-top: 8px; }
+  .avatar-colors { --c0: #0B9E7A; --c1: #2563EB; --c2: #7C3AED; --c3: #DC2626; --c4: #D97706; }
+</style>
+</head>
+<body>
+
+<!-- SCREEN: LANDING -->
+<div id="landing" class="screen active">
+  <div class="landing-header">
+    <div class="logo-mark">
+      <svg viewBox="0 0 36 36"><path d="M18 4C10.268 4 4 10.268 4 18s6.268 14 14 14 14-6.268 14-14S25.732 4 18 4zm0 6a2 2 0 110 4 2 2 0 010-4zm3 16h-6v-2h2v-6h-2v-2h4v8h2v2z"/></svg>
+    </div>
+    <div class="landing-title">Zero<span>Friction</span> Hospital</div>
+    <div class="landing-sub">AI-powered hands-free documentation for every Indian doctor and nurse</div>
+  </div>
+
+  <div class="stats-row">
+    <div class="stat-box">
+      <div class="stat-num">50+</div>
+      <div class="stat-label">Patients saved per day</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num">2.5h</div>
+      <div class="stat-label">Documentation time saved</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-num">0</div>
+      <div class="stat-label">Medication errors</div>
+    </div>
+  </div>
+
+  <div class="role-section">
+    <div class="role-label">Select your role to continue</div>
+    <div class="role-card" onclick="showScreen('doctor-home')">
+      <div class="role-icon doc">🩺</div>
+      <div class="role-info">
+        <div class="role-name">Doctor</div>
+        <div class="role-desc">Voice notes, patient records, EMR sync</div>
+      </div>
+      <div class="role-arrow">›</div>
+    </div>
+    <div class="role-card" onclick="showScreen('nurse-home')">
+      <div class="role-icon nurse">💊</div>
+      <div class="role-info">
+        <div class="role-name">Nurse</div>
+        <div class="role-desc">QR scan, medication check, ward rounds</div>
+      </div>
+      <div class="role-arrow">›</div>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: DOCTOR HOME -->
+<div id="doctor-home" class="screen">
+  <div class="greeting">
+    <div class="greeting-sub">Good morning 👋</div>
+    <div class="greeting-name">Dr. Arun Kumar</div>
+    <div class="greeting-stats">
+      <div class="g-stat">
+        <div class="g-stat-num" id="patient-count">4</div>
+        <div class="g-stat-label">Patients today</div>
+      </div>
+      <div class="g-stat">
+        <div class="g-stat-num">2.1h</div>
+        <div class="g-stat-label">Time saved</div>
+      </div>
+      <div class="g-stat">
+        <div class="g-stat-num">100%</div>
+        <div class="g-stat-label">Notes digitized</div>
+      </div>
+    </div>
+  </div>
+  <div class="scroll-content" style="padding: 16px 16px 80px;">
+    <div class="section-title" style="margin-bottom: 12px;">Today's Patients</div>
+    <div id="patient-list"></div>
+  </div>
+  <button class="fab" onclick="showScreen('add-patient')" title="Add Patient">＋</button>
+  <div class="bottom-tabs">
+    <button class="tab-btn active"><span class="tab-icon">🏥</span><span class="tab-label">Patients</span></button>
+    <button class="tab-btn" onclick="showScreen('landing')"><span class="tab-icon">🚪</span><span class="tab-label">Switch Role</span></button>
+  </div>
+</div>
+
+<!-- SCREEN: ADD PATIENT -->
+<div id="add-patient" class="screen">
+  <div class="nav">
+    <button class="nav-back" onclick="showScreen('doctor-home')">←</button>
+    <div><div class="nav-title">Register Patient</div></div>
+  </div>
+  <div class="scroll-content" style="padding: 20px 20px 40px;">
+    <div id="add-form">
+      <div class="form-group">
+        <label class="form-label">Full Name *</label>
+        <input class="form-input" id="p-name" placeholder="Patient full name" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Age</label>
+        <input class="form-input" id="p-age" type="number" placeholder="e.g. 45" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Gender</label>
+        <select class="form-select" id="p-gender">
+          <option value="Male">Male</option>
+          <option value="Female">Female</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Department</label>
+        <select class="form-select" id="p-dept">
+          <option>General OPD</option>
+          <option>Medicine</option>
+          <option>Surgery</option>
+          <option>Orthopaedics</option>
+          <option>Gynaecology</option>
+          <option>Paediatrics</option>
+          <option>ICU</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Chief Complaint</label>
+        <input class="form-input" id="p-complaint" placeholder="e.g. Fever for 3 days" />
+      </div>
+      <button class="save-btn" onclick="registerPatient()">Generate QR & Register →</button>
+    </div>
+    <div id="qr-result" style="display:none;">
+      <div class="qr-display" id="qr-display-area">
+        <div class="qr-patient-name" id="qr-pname"></div>
+        <div id="qr-code-area" style="background:white;padding:12px;border-radius:8px;"></div>
+        <div class="qr-id" id="qr-pid"></div>
+        <div style="font-size:13px;color:var(--teal-dark);text-align:center;">Patient registered ✓ QR code generated</div>
+      </div>
+      <button class="save-btn" style="margin-top:16px;" onclick="goToVoice()">Start Voice Documentation →</button>
+      <button class="btn-secondary" onclick="resetAddForm()">Register Another Patient</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: VOICE RECORD -->
+<div id="voice-record" class="screen">
+  <div class="nav">
+    <button class="nav-back" onclick="showScreen('doctor-home')">←</button>
+    <div>
+      <div class="nav-title" id="voice-patient-name">Patient Name</div>
+      <div class="nav-sub" id="voice-patient-meta">General OPD</div>
+    </div>
+    <div class="nav-badge" id="voice-pid-badge">PID-000</div>
+  </div>
+  <div class="voice-patient-bar">
+    <div class="vital-num" style="font-size:13px;color:var(--text2);">Vitals (auto-extracted from voice)</div>
+  </div>
+  <div class="scroll-content">
+    <div style="padding: 16px;">
+      <div class="vitals-row" id="vitals-display">
+        <div class="vital-box"><div class="vital-num" id="v-bp">—</div><div class="vital-label">BP (mmHg)</div></div>
+        <div class="vital-box"><div class="vital-num" id="v-temp">—</div><div class="vital-label">Temp (°F)</div></div>
+        <div class="vital-box"><div class="vital-num" id="v-spo2">—</div><div class="vital-label">SpO₂ (%)</div></div>
+      </div>
+      <div class="transcript-box">
+        <div class="transcript-label">Live Transcription</div>
+        <div class="transcript-text" id="transcript-text">
+          <span style="color:var(--text3);font-size:14px;">Press the microphone button and speak your clinical notes in Hindi or English...</span>
+        </div>
+      </div>
+    </div>
+    <div class="record-controls">
+      <div class="record-time" id="record-time">0:00</div>
+      <div class="pulse-ring" id="pulse-ring" style="display:none;">
+        <button class="record-btn recording" id="record-btn" onclick="toggleRecord()">⏹</button>
+      </div>
+      <div id="idle-btn">
+        <button class="record-btn idle" onclick="toggleRecord()">🎙</button>
+      </div>
+      <div class="record-status" id="record-status">Tap microphone to start recording</div>
+    </div>
+    <div style="padding: 0 16px 16px;">
+      <div class="fields-grid">
+        <div class="field-box"><div class="field-label">Diagnosis</div><div class="field-value" id="f-diagnosis">—</div></div>
+        <div class="field-box"><div class="field-label">Prescription</div><div class="field-value" id="f-rx">—</div></div>
+        <div class="field-box"><div class="field-label">Follow-up</div><div class="field-value" id="f-followup">—</div></div>
+        <div class="field-box"><div class="field-label">Admit?</div><div class="field-value" id="f-admit">No</div></div>
+      </div>
+      <button class="save-btn" style="margin-top:14px;" id="save-note-btn" disabled onclick="saveNote()">Save to EMR</button>
+    </div>
+  </div>
+</div>
+
+<!-- SCREEN: PATIENT NOTES VIEW -->
+<div id="patient-notes" class="screen">
+  <div class="nav">
+    <button class="nav-back" onclick="showScreen('doctor-home')">←</button>
+    <div>
+      <div class="nav-title" id="notes-patient-name">Patient</div>
+      <div class="nav-sub" id="notes-patient-meta">View history</div>
+    </div>
+  </div>
+  <div class="scroll-content" style="padding: 16px 16px 40px;">
+    <div class="info-grid" id="patient-info-grid"></div>
+    <div class="section-title">Clinical Notes</div>
+    <div id="notes-list"></div>
+    <button class="save-btn" onclick="startVoiceForPatient(currentPatient)" style="margin-top:8px;">+ Add New Note</button>
+  </div>
+</div>
+
+<!-- SCREEN: NURSE HOME -->
+<div id="nurse-home" class="screen">
+  <div class="nurse-header">
+    <div class="greeting-sub">Ward Round 👩‍⚕️</div>
+    <div class="greeting-name">Nurse Priya Sharma</div>
+    <div class="greeting-stats">
+      <div class="g-stat">
+        <div class="g-stat-num">12</div>
+        <div class="g-stat-label">Patients assigned</div>
+      </div>
+      <div class="g-stat">
+        <div class="g-stat-num">3</div>
+        <div class="g-stat-label">Meds due now</div>
+      </div>
+    </div>
+  </div>
+  <div class="scroll-content" style="padding-bottom: 80px;">
+    <div class="qr-scan-area" onclick="simulateQRScan()">
+      <div class="qr-icon">📷</div>
+      <div class="qr-label">Scan Patient QR Code</div>
+      <div class="qr-sub">Point camera at patient's bed QR code to instantly load their records</div>
+    </div>
+    <div style="padding: 0 20px;">
+      <div class="section-title">General Medicine — Ward B</div>
+    </div>
+    <div id="ward-list"></div>
+  </div>
+  <div class="bottom-tabs">
+    <button class="tab-btn active"><span class="tab-icon">🏥</span><span class="tab-label">Ward</span></button>
+    <button class="tab-btn" onclick="showScreen('landing')"><span class="tab-icon">🚪</span><span class="tab-label">Switch Role</span></button>
+  </div>
+</div>
+
+<!-- SCREEN: NURSE PATIENT VIEW -->
+<div id="nurse-patient" class="screen">
+  <div class="nav">
+    <button class="nav-back" onclick="showScreen('nurse-home')">←</button>
+    <div>
+      <div class="nav-title" id="n-patient-name">Patient</div>
+      <div class="nav-sub" id="n-patient-bed">Bed —</div>
+    </div>
+    <div class="nav-badge" id="n-patient-status">Stable</div>
+  </div>
+  <div class="scroll-content" style="padding: 16px 16px 40px;">
+    <div class="info-grid" id="nurse-info-grid"></div>
+    <div class="orders-card">
+      <div class="orders-title">⚕️ Doctor's Orders</div>
+      <div id="doctor-orders-text" style="font-size:14px;color:var(--text);line-height:1.7;"></div>
+    </div>
+    <div class="orders-card">
+      <div class="orders-title">💊 Medication Schedule</div>
+      <div id="med-schedule"></div>
+    </div>
+    <button class="save-btn" onclick="showMedCheck(currentNursePatient)">Verify Medication Before Admin →</button>
+  </div>
+</div>
+
+<!-- SCREEN: MEDICATION CHECK -->
+<div id="med-check" class="screen">
+  <div class="nav">
+    <button class="nav-back" onclick="showScreen('nurse-patient')">←</button>
+    <div><div class="nav-title">Medication Safety Check</div><div class="nav-sub">Zero-error verification</div></div>
+  </div>
+  <div class="scroll-content">
+    <div class="check-area">
+      <div id="med-scanning-state">
+        <div style="text-align:center; padding: 20px 0;">
+          <div style="font-size:48px;margin-bottom:12px;">👓</div>
+          <div style="font-size:15px;font-weight:600;color:var(--text);">Scanning medication strip...</div>
+          <div style="font-size:13px;color:var(--text2);margin-top:6px;">Computer vision verifying drug name, dose, and patient</div>
+          <div style="margin-top:20px;height:4px;background:var(--border);border-radius:2px;overflow:hidden;">
+            <div id="scan-progress" style="height:100%;background:var(--teal);border-radius:2px;width:0%;transition:width 0.1s linear;"></div>
+          </div>
+        </div>
+      </div>
+      <div id="med-check-result" style="display:none;"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ==================== DATA ====================
+const patients = [
+  { id: 'PID-001', name: 'Ramesh Patil', age: 52, gender: 'Male', dept: 'Medicine', complaint: 'Chest pain, breathlessness', tag: 'critical', color: '#DC2626', bed: 'B-4', notes: [{ doctor: 'Dr. Arun Kumar', time: '9:15 AM', text: 'Patient presents with acute chest pain radiating to left arm for 2 hours. BP 150/95, Temp 98.6°F, SpO₂ 96%. ECG ordered. Troponin levels elevated. Suspect NSTEMI. Started on aspirin 325mg, heparin infusion. Cardiology consult requested. Admit to CCU.', bp:'150/95', temp:'98.6', spo2:'96', diagnosis:'Suspected NSTEMI', rx:'Aspirin 325mg, Heparin', followup:'Cardiology review 2hr', admit:'Yes' }] },
+  { id: 'PID-002', name: 'Sunita Deshpande', age: 34, gender: 'Female', dept: 'General OPD', complaint: 'Fever 3 days, body ache', tag: 'new', color: '#2563EB', bed: 'B-7', notes: [{ doctor: 'Dr. Arun Kumar', time: '10:30 AM', text: 'Patient with 3 days history of high-grade fever, body ache, and headache. Temp 103.2°F, BP 110/70, SpO₂ 99%. Dengue NS1 antigen sent. Started on paracetamol 650mg TDS, oral fluids, and rest. Review after 48 hours or immediately if bleeding symptoms develop.', bp:'110/70', temp:'103.2', spo2:'99', diagnosis:'Viral fever / Dengue suspect', rx:'Paracetamol 650mg TDS', followup:'48 hours', admit:'No' }] },
+  { id: 'PID-003', name: 'Vijay Nair', age: 68, gender: 'Male', dept: 'Orthopaedics', complaint: 'Knee pain, difficulty walking', tag: 'follow', color: '#7C3AED', bed: 'B-2', notes: [{ doctor: 'Dr. Arun Kumar', time: '8:00 AM', text: 'Follow-up visit. Post right total knee replacement day 5. Wound healing well. Patient mobilizing with walker. Pain score 4/10. Physiotherapy progressing as planned. Continue analgesics and DVT prophylaxis. Discharge planned for day 7.', bp:'130/82', temp:'98.2', spo2:'98', diagnosis:'Post TKR Day 5', rx:'Tramadol 50mg, Enoxaparin', followup:'Day 7 discharge', admit:'Yes' }] },
+  { id: 'PID-004', name: 'Meera Iyer', age: 28, gender: 'Female', dept: 'Gynaecology', complaint: 'Routine antenatal check', tag: 'new', color: '#0B9E7A', bed: 'B-11', notes: [] },
+];
+
+const meds = {
+  'PID-001': [
+    { name: 'Aspirin', dose: '325mg', route: 'Oral', time: 'Now', status: 'due', icon: '💊' },
+    { name: 'Heparin Infusion', dose: '1000 IU/hr', route: 'IV', time: '2:00 PM', status: 'upcoming', icon: '💉' },
+    { name: 'Atorvastatin', dose: '80mg', route: 'Oral', time: '8:00 PM', status: 'upcoming', icon: '💊' },
+  ],
+  'PID-002': [
+    { name: 'Paracetamol', dose: '650mg', route: 'Oral', time: 'Now', status: 'due', icon: '💊' },
+    { name: 'ORS', dose: '200ml', route: 'Oral', time: 'Every 2hr', status: 'due', icon: '🥤' },
+  ],
+  'PID-003': [
+    { name: 'Tramadol', dose: '50mg', route: 'Oral', time: 'Done 8AM', status: 'done', icon: '💊' },
+    { name: 'Enoxaparin', dose: '40mg', route: 'SC', time: '10:00 PM', status: 'upcoming', icon: '💉' },
+  ],
+  'PID-004': [
+    { name: 'Folic Acid', dose: '5mg', route: 'Oral', time: 'Morning', status: 'done', icon: '💊' },
+    { name: 'Iron Supplement', dose: '100mg', route: 'Oral', time: 'Now', status: 'due', icon: '💊' },
+  ],
+};
+
+let currentPatient = null;
+let currentNursePatient = null;
+let isRecording = false;
+let recordTimer = null;
+let recordSeconds = 0;
+let transcriptTimeout = null;
+let scanProgress = null;
+
+// Demo transcripts
+const demoTranscripts = {
+  default: [
+    { t: 800, text: 'Patient is a ' },
+    { t: 1400, text: 'Patient is a 45-year-old male presenting with ' },
+    { t: 2200, text: 'Patient is a 45-year-old male presenting with fever for 4 days, temperature 102 degrees Fahrenheit. ' },
+    { t: 3100, text: 'Patient is a 45-year-old male presenting with fever for 4 days, temperature 102 degrees Fahrenheit. BP 120 by 80, SpO2 98 percent. ' },
+    { t: 4200, text: 'Patient is a 45-year-old male presenting with fever for 4 days, temperature 102 degrees Fahrenheit. BP 120 by 80, SpO2 98 percent. No cough, no breathlessness. Abdomen soft, non-tender. ' },
+    { t: 5500, text: 'Patient is a 45-year-old male presenting with fever for 4 days, temperature 102 degrees Fahrenheit. BP 120 by 80, SpO2 98 percent. No cough, no breathlessness. Abdomen soft, non-tender. Impression: Viral fever. Prescribed paracetamol 500mg TDS, cetirizine 10mg at night. Review after 3 days.' },
+  ]
+};
+
+// ==================== SCREENS ====================
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+  if (id === 'doctor-home') renderPatientList();
+  if (id === 'nurse-home') renderWardList();
+}
+
+// ==================== DOCTOR ====================
+function renderPatientList() {
+  const list = document.getElementById('patient-list');
+  document.getElementById('patient-count').textContent = patients.length;
+  list.innerHTML = patients.map((p, i) => `
+    <div class="patient-card" onclick="openPatient(${i})">
+      <div class="patient-avatar" style="background:${p.color}22; color:${p.color}; font-size:15px; font-weight:700;">
+        ${p.name.split(' ').map(n=>n[0]).join('').slice(0,2)}
+      </div>
+      <div class="patient-info">
+        <div class="patient-name">${p.name}</div>
+        <div class="patient-meta">${p.age}y • ${p.gender} • ${p.dept}</div>
+        <div class="patient-meta" style="margin-top:2px;">${p.complaint}</div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;">
+        <span class="patient-tag ${p.tag === 'critical' ? 'tag-critical' : p.tag === 'new' ? 'tag-new' : 'tag-follow'}">${p.tag === 'critical' ? '🔴 Critical' : p.tag === 'new' ? 'New' : 'Follow-up'}</span>
+        <span style="font-size:11px;color:var(--text3);">${p.notes.length} note${p.notes.length !== 1 ? 's' : ''}</span>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openPatient(i) {
+  currentPatient = i;
+  const p = patients[i];
+  document.getElementById('notes-patient-name').textContent = p.name;
+  document.getElementById('notes-patient-meta').textContent = `${p.age}y • ${p.dept} • ${p.id}`;
+  const grid = document.getElementById('patient-info-grid');
+  grid.innerHTML = `
+    <div class="info-card"><div class="info-label">Patient ID</div><div class="info-value" style="font-family:'DM Mono',monospace;font-size:13px;">${p.id}</div></div>
+    <div class="info-card"><div class="info-label">Department</div><div class="info-value">${p.dept}</div></div>
+    <div class="info-card"><div class="info-label">Age / Gender</div><div class="info-value">${p.age}y, ${p.gender}</div></div>
+    <div class="info-card"><div class="info-label">Complaint</div><div class="info-value" style="font-size:12px;">${p.complaint}</div></div>
+  `;
+  renderNotes(i);
+  showScreen('patient-notes');
+}
+
+function renderNotes(i) {
+  const p = patients[i];
+  const list = document.getElementById('notes-list');
+  if (p.notes.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">📝</div><div class="empty-text">No clinical notes yet.<br>Press the button below to start voice documentation.</div></div>`;
+    return;
+  }
+  list.innerHTML = p.notes.map(n => `
+    <div class="note-card">
+      <div class="note-meta">
+        <div class="note-doctor">${n.doctor}</div>
+        <div class="note-time">Today, ${n.time}</div>
+      </div>
+      <div class="vitals-row">
+        <div class="vital-box"><div class="vital-num">${n.bp || '—'}</div><div class="vital-label">BP</div></div>
+        <div class="vital-box"><div class="vital-num">${n.temp || '—'}°</div><div class="vital-label">Temp</div></div>
+        <div class="vital-box"><div class="vital-num">${n.spo2 || '—'}%</div><div class="vital-label">SpO₂</div></div>
+      </div>
+      <div class="note-text">${n.text}</div>
+      ${n.diagnosis ? `<div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px;">
+        <span class="chip">Dx: ${n.diagnosis}</span>
+        ${n.rx ? `<span class="chip" style="background:var(--blue-light);color:var(--blue);">Rx: ${n.rx}</span>` : ''}
+      </div>` : ''}
+    </div>
+  `).join('');
+}
+
+function startVoiceForPatient(i) {
+  currentPatient = i;
+  const p = patients[i];
+  document.getElementById('voice-patient-name').textContent = p.name;
+  document.getElementById('voice-patient-meta').textContent = `${p.age}y • ${p.dept}`;
+  document.getElementById('voice-pid-badge').textContent = p.id;
+  document.getElementById('transcript-text').innerHTML = '<span style="color:var(--text3);font-size:14px;">Press the microphone button and speak your clinical notes in Hindi or English...</span>';
+  document.getElementById('v-bp').textContent = '—';
+  document.getElementById('v-temp').textContent = '—';
+  document.getElementById('v-spo2').textContent = '—';
+  document.getElementById('f-diagnosis').textContent = '—';
+  document.getElementById('f-rx').textContent = '—';
+  document.getElementById('f-followup').textContent = '—';
+  document.getElementById('f-admit').textContent = 'No';
+  document.getElementById('save-note-btn').disabled = true;
+  document.getElementById('record-time').textContent = '0:00';
+  isRecording = false;
+  document.getElementById('pulse-ring').style.display = 'none';
+  document.getElementById('idle-btn').style.display = 'flex';
+  document.getElementById('record-status').textContent = 'Tap microphone to start recording';
+  showScreen('voice-record');
+}
+
+function toggleRecord() {
+  if (!isRecording) {
+    isRecording = true;
+    recordSeconds = 0;
+    document.getElementById('pulse-ring').style.display = 'flex';
+    document.getElementById('idle-btn').style.display = 'none';
+    document.getElementById('record-status').textContent = 'Recording... speak your clinical notes';
+    document.getElementById('transcript-text').innerHTML = '<span class="transcript-cursor"></span>';
+    recordTimer = setInterval(() => {
+      recordSeconds++;
+      const m = Math.floor(recordSeconds / 60);
+      const s = recordSeconds % 60;
+      document.getElementById('record-time').textContent = `${m}:${s.toString().padStart(2,'0')}`;
+    }, 1000);
+    simulateTranscription();
+  } else {
+    stopRecording();
+  }
+}
+
+function simulateTranscription() {
+  const steps = demoTranscripts.default;
+  steps.forEach(step => {
+    const t = setTimeout(() => {
+      if (!isRecording) return;
+      document.getElementById('transcript-text').innerHTML = step.text + '<span class="transcript-cursor"></span>';
+    }, step.t);
+    transcriptTimeout = t;
+  });
+  setTimeout(() => {
+    if (!isRecording) return;
+    document.getElementById('v-bp').textContent = '120/80';
+    document.getElementById('v-temp').textContent = '102';
+    document.getElementById('v-spo2').textContent = '98';
+    document.getElementById('f-diagnosis').textContent = 'Viral Fever';
+    document.getElementById('f-rx').textContent = 'Paracetamol TDS';
+    document.getElementById('f-followup').textContent = '3 days';
+    document.getElementById('f-admit').textContent = 'No';
+    document.getElementById('save-note-btn').disabled = false;
+  }, 5600);
+}
+
+function stopRecording() {
+  isRecording = false;
+  clearInterval(recordTimer);
+  document.getElementById('pulse-ring').style.display = 'none';
+  document.getElementById('idle-btn').style.display = 'flex';
+  document.getElementById('record-status').textContent = 'Recording stopped. Review and save.';
+  const el = document.getElementById('transcript-text');
+  el.innerHTML = el.innerHTML.replace('<span class="transcript-cursor"></span>', '');
+}
+
+function saveNote() {
+  const p = patients[currentPatient];
+  const transcript = document.getElementById('transcript-text').textContent;
+  const bp = document.getElementById('v-bp').textContent;
+  const temp = document.getElementById('v-temp').textContent;
+  const spo2 = document.getElementById('v-spo2').textContent;
+  const now = new Date();
+  const time = now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  p.notes.unshift({
+    doctor: 'Dr. Arun Kumar',
+    time,
+    text: transcript || 'Voice note saved.',
+    bp, temp, spo2,
+    diagnosis: document.getElementById('f-diagnosis').textContent,
+    rx: document.getElementById('f-rx').textContent,
+    followup: document.getElementById('f-followup').textContent,
+    admit: document.getElementById('f-admit').textContent,
+  });
+  document.getElementById('save-note-btn').textContent = '✓ Saved to EMR!';
+  document.getElementById('save-note-btn').style.background = '#059669';
+  setTimeout(() => {
+    openPatient(currentPatient);
+  }, 900);
+}
+
+// ==================== ADD PATIENT ====================
+let newPatientIndex = null;
+
+function registerPatient() {
+  const name = document.getElementById('p-name').value.trim();
+  if (!name) { document.getElementById('p-name').focus(); return; }
+  const age = document.getElementById('p-age').value || '—';
+  const gender = document.getElementById('p-gender').value;
+  const dept = document.getElementById('p-dept').value;
+  const complaint = document.getElementById('p-complaint').value || 'Not specified';
+  const colors = ['#0B9E7A','#2563EB','#7C3AED','#DC2626','#D97706'];
+  const color = colors[patients.length % colors.length];
+  const id = 'PID-' + String(100 + patients.length + 1).padStart(3,'0');
+  const beds = ['B-3','B-6','B-8','B-9','B-12','B-14'];
+  const bed = beds[patients.length % beds.length];
+  patients.push({ id, name, age, gender, dept, complaint, tag: 'new', color, bed, notes: [] });
+  newPatientIndex = patients.length - 1;
+  document.getElementById('qr-pname').textContent = name;
+  document.getElementById('qr-pid').textContent = id + ' • ' + dept;
+  generateQR(id + '|' + name + '|' + dept);
+  document.getElementById('add-form').style.display = 'none';
+  document.getElementById('qr-result').style.display = 'block';
+}
+
+function generateQR(text) {
+  const area = document.getElementById('qr-code-area');
+  const size = 140;
+  const cell = 5;
+  const cols = Math.floor(size / cell);
+  let html = `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" xmlns="http://www.w3.org/2000/svg" style="display:block;">`;
+  html += `<rect width="${size}" height="${size}" fill="white"/>`;
+  const seed = text.split('').reduce((a,c)=>a+c.charCodeAt(0),0);
+  function rand(i) { return ((seed * 1103515245 + i * 12345) & 0x7fffffff) % 2 === 0; }
+  for (let r = 0; r < cols; r++) {
+    for (let c = 0; c < cols; c++) {
+      const isCorner = (r < 7 && c < 7) || (r < 7 && c >= cols-7) || (r >= cols-7 && c < 7);
+      const isCornerInner = (r >= 2 && r < 5 && c >= 2 && c < 5) || (r >= 2 && r < 5 && c >= cols-5 && c < cols-2) || (r >= cols-5 && r < cols-2 && c >= 2 && c < 5);
+      let filled = false;
+      if (isCorner) filled = !(r === 1 || r === 5 || c === 1 || c === 5);
+      else if (isCornerInner) filled = true;
+      else filled = rand(r * cols + c + seed);
+      if (filled) html += `<rect x="${c*cell}" y="${r*cell}" width="${cell}" height="${cell}" fill="#0F1C18"/>`;
+    }
+  }
+  html += '</svg>';
+  area.innerHTML = html;
+}
+
+function goToVoice() {
+  startVoiceForPatient(newPatientIndex);
+}
+
+function resetAddForm() {
+  document.getElementById('p-name').value = '';
+  document.getElementById('p-age').value = '';
+  document.getElementById('p-complaint').value = '';
+  document.getElementById('add-form').style.display = 'block';
+  document.getElementById('qr-result').style.display = 'none';
+}
+
+// ==================== NURSE ====================
+function renderWardList() {
+  const list = document.getElementById('ward-list');
+  list.innerHTML = `<div class="ward-card" style="margin: 0 20px;">
+    <div class="ward-header"><div class="ward-name">General Medicine — Ward B</div><div class="ward-count">${patients.length} patients</div></div>
+    ${patients.map((p,i) => `
+      <div class="bed-row" onclick="openNursePatient(${i})">
+        <div class="bed-num">${p.bed}</div>
+        <div>
+          <div class="bed-patient">${p.name}</div>
+          <div style="font-size:12px;color:var(--text2);">${p.complaint}</div>
+        </div>
+        <span class="bed-status ${p.tag === 'critical' ? 'tag-critical' : p.tag === 'follow' ? 'tag-follow' : 'tag-new'}">${p.tag === 'critical' ? '🔴' : p.tag === 'follow' ? 'Follow' : 'New'}</span>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+function simulateQRScan() {
+  const idx = Math.floor(Math.random() * patients.length);
+  openNursePatient(idx);
+}
+
+function openNursePatient(i) {
+  currentNursePatient = i;
+  const p = patients[i];
+  document.getElementById('n-patient-name').textContent = p.name;
+  document.getElementById('n-patient-bed').textContent = `Bed ${p.bed} • ${p.dept}`;
+  document.getElementById('n-patient-status').textContent = p.tag === 'critical' ? '🔴 Critical' : p.tag === 'follow' ? 'Follow-up' : 'Stable';
+  document.getElementById('nurse-info-grid').innerHTML = `
+    <div class="info-card"><div class="info-label">Patient ID</div><div class="info-value" style="font-family:'DM Mono',monospace;font-size:13px;">${p.id}</div></div>
+    <div class="info-card"><div class="info-label">Age / Gender</div><div class="info-value">${p.age}y, ${p.gender}</div></div>
+    <div class="info-card"><div class="info-label">Allergies</div><div class="info-value" style="color:var(--red);font-size:13px;">${i === 0 ? 'Penicillin' : 'None known'}</div></div>
+    <div class="info-card"><div class="info-label">Blood Group</div><div class="info-value">${['B+','O+','A+','AB+'][i % 4]}</div></div>
+  `;
+  const orders = p.notes.length > 0 ? p.notes[0].text : 'No orders entered yet. Doctor has not added notes.';
+  document.getElementById('doctor-orders-text').textContent = orders;
+  const patientMeds = meds[p.id] || [];
+  document.getElementById('med-schedule').innerHTML = patientMeds.length === 0
+    ? '<div style="font-size:14px;color:var(--text3);padding:8px 0;">No medications prescribed yet.</div>'
+    : patientMeds.map(m => `
+      <div class="med-row">
+        <div class="med-icon" style="background:${m.status === 'due' ? 'var(--amber-light)' : m.status === 'done' ? 'var(--teal-light)' : 'var(--bg)'};">${m.icon}</div>
+        <div class="med-info">
+          <div class="med-name">${m.name}</div>
+          <div class="med-dose">${m.dose} • ${m.route}</div>
+        </div>
+        <span class="med-time ${m.status === 'due' ? 'time-due' : m.status === 'done' ? 'time-done' : 'time-upcoming'}">${m.time}</span>
+      </div>
+    `).join('');
+  showScreen('nurse-patient');
+}
+
+function showMedCheck(i) {
+  const p = patients[i];
+  const patientMeds = meds[p.id] || [];
+  const dueMed = patientMeds.find(m => m.status === 'due');
+  showScreen('med-check');
+  document.getElementById('med-scanning-state').style.display = 'block';
+  document.getElementById('med-check-result').style.display = 'none';
+  let prog = 0;
+  const bar = document.getElementById('scan-progress');
+  const interval = setInterval(() => {
+    prog += 2;
+    bar.style.width = prog + '%';
+    if (prog >= 100) {
+      clearInterval(interval);
+      document.getElementById('med-scanning-state').style.display = 'none';
+      document.getElementById('med-check-result').style.display = 'block';
+      const hasError = i === 0 && Math.random() > 0.5;
+      const result = document.getElementById('med-check-result');
+      const checks = [
+        { icon: '👤', label: 'Patient identity', ok: true, result: p.name },
+        { icon: '💊', label: 'Drug name', ok: true, result: dueMed ? dueMed.name : 'Paracetamol' },
+        { icon: '⚖️', label: 'Dosage', ok: !hasError, result: hasError ? '500mg ≠ 650mg ⚠️' : dueMed ? dueMed.dose : '500mg ✓' },
+        { icon: '🕐', label: 'Timing', ok: true, result: 'Within window ✓' },
+        { icon: '⚠️', label: 'Allergy check', ok: i !== 0, result: i === 0 ? 'PENICILLIN ALLERGY — verify drug' : 'No conflicts ✓' },
+      ];
+      result.innerHTML = `
+        <div class="check-card">
+          <div class="check-title">5-point verification</div>
+          ${checks.map(c => `
+            <div class="check-row">
+              <div class="check-icon">${c.icon}</div>
+              <div class="check-label">${c.label}</div>
+              <div class="check-result ${c.ok ? 'result-ok' : 'result-warn'}">${c.result}</div>
+            </div>
+          `).join('')}
+        </div>
+        ${!checks.every(c => c.ok) ? `
+          <div class="alert-banner">
+            <div class="alert-icon">🚨</div>
+            <div>
+              <div class="alert-title">STOP — Do not administer</div>
+              <div class="alert-text">Verification failed. Check allergy records and confirm dosage with Dr. Arun Kumar before proceeding. Patient safety protocol activated.</div>
+            </div>
+          </div>
+        ` : `
+          <div class="success-banner">
+            <div class="success-icon">✅</div>
+            <div>
+              <div class="success-title">Safe to administer</div>
+              <div class="success-text">All 5 checks passed. ${dueMed ? dueMed.name + ' ' + dueMed.dose : 'Medication'} confirmed for ${p.name}. Administer as prescribed.</div>
+            </div>
+          </div>
+        `}
+        <button class="btn-secondary" onclick="showScreen('nurse-patient')" style="margin-top:4px;">Back to Patient</button>
+      `;
+    }
+  }, 30);
+}
+
+// ==================== INIT ====================
+renderPatientList();
+renderWardList();
+</script>
+</body>
+</html>
